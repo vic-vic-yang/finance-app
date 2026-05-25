@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
 import 'add_bill_screen.dart';
 
 class BillsScreen extends StatefulWidget {
@@ -127,6 +130,12 @@ class _BillsScreenState extends State<BillsScreen>
       setState(() { _loading = true; _page = 1; _hasMore = true; });
     }
     try {
+      // 进入账单页 / 下拉刷新时：如果本账本的 DEK 尚未到位（pending 状态），
+      // 趁机重拉一次 keys/mine，看是不是已经被别人 wrap 过了
+      final cur = await AuthService.getCurrentLedgerId();
+      if (cur != null && !KeyChain.instance.hasDek(cur)) {
+        await PendingDekResolver.rehydrate(requireLedgerId: cur);
+      }
       final res = await ApiService.getBills(
         page: 1,
         limit: 20,
@@ -745,11 +754,16 @@ class _BillTile extends StatelessWidget {
                     ],
                   ]),
                   const SizedBox(height: 2),
-                  Text(
-                    bill.note.isEmpty ? bill.account.name : '${bill.account.name}  ${bill.note}',
-                    style: TextStyle(fontSize: 12, color: AppColors.text2),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Builder(builder: (_) {
+                    final accName = bill.account.nameOf(bill.ledgerId);
+                    return Text(
+                      bill.note.isEmpty
+                          ? accName
+                          : '$accName  ${bill.note}',
+                      style: TextStyle(fontSize: 12, color: AppColors.text2),
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }),
                 ]),
               ),
               const SizedBox(width: 8),

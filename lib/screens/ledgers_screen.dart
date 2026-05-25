@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
 
 class LedgersScreen extends StatefulWidget {
   const LedgersScreen({super.key});
@@ -43,6 +47,11 @@ class _LedgersScreenState extends State<LedgersScreen> {
         _currentId = res['currentLedgerId'] as String?;
         _loading = false;
       });
+      // 进账本管理页时顺手做一次：
+      // 1. 给我所在账本里 pending 的新成员包装 DEK
+      // 2. 给我自己还没拿到的 DEK 重拉一次（万一别人刚帮我 wrap 过）
+      unawaited(PendingDekResolver.resolveAll());
+      unawaited(PendingDekResolver.rehydrate());
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -56,6 +65,13 @@ class _LedgersScreenState extends State<LedgersScreen> {
       final user = await AuthService.getUser() ?? {};
       user['currentLedgerId'] = l.id;
       await AuthService.saveUser(user);
+      // 切到的账本如果还没拿到 DEK（如 Bob 刚加入还在 pending），
+      // 重拉一次 keys/mine 看看是不是别人刚帮我 wrap 过了
+      if (!KeyChain.instance.hasDek(l.id)) {
+        await PendingDekResolver.rehydrate(requireLedgerId: l.id);
+      }
+      // 自己作为已有成员，借此机会给该账本 pending 的人补 DEK
+      unawaited(PendingDekResolver.resolveOne(l.id));
       if (!mounted) return;
       setState(() => _currentId = l.id);
       bumpRefresh();
@@ -104,11 +120,26 @@ class _LedgersScreenState extends State<LedgersScreen> {
     final name = nameCtrl.text.trim();
     if (name.isEmpty) return;
     try {
-      await ApiService.createLedger(name: name);
+      // 客户端本地生成 DEK 并用自己的公钥包装
+      final pack = KeyChain.instance.newDekForOwner();
+      final res = await ApiService.createLedger(
+        name: name,
+        dekWrapped: pack.dekWrappedBase64,
+      );
+      // 立即把 DEK 装进本地缓存，省得马上要用时还要重新拉一次
+      final ledger = res['ledger'] as Map<String, dynamic>?;
+      final newId = ledger?['id'] as String?;
+      if (newId != null) {
+        KeyChain.instance.loadDek(
+          ledgerId: newId,
+          dekWrappedBase64: pack.dekWrappedBase64,
+          dekVersion: pack.dekVersion,
+        );
+      }
       _toast('账本「$name」已创建');
       _load();
-    } catch (_) {
-      _toast('创建失败');
+    } catch (e) {
+      _toast('创建失败：$e');
     }
   }
 
@@ -168,7 +199,11 @@ class _LedgersScreenState extends State<LedgersScreen> {
         await AuthService.saveUser(user);
         bumpRefresh();
       }
-      _toast(res['message']?.toString() ?? '加入成功');
+      // 提示用户当前还在 pending —— 等原成员上线 wrap DEK
+      final pending = res['pending'] == true;
+      _toast(pending
+          ? '已加入，等待原成员授权解密（请稍候）'
+          : (res['message']?.toString() ?? '加入成功'));
       _load();
     } catch (_) {
       _toast('加入失败：邀请码无效或已过期');

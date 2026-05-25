@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../models/account.dart';
 import '../models/budget.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
 import 'account_detail_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
@@ -286,6 +290,12 @@ class _HomeScreenState extends State<HomeScreen>
             final user = await AuthService.getUser() ?? {};
             user['currentLedgerId'] = l.id;
             await AuthService.saveUser(user);
+            // 切到的账本若无 DEK（如新加入还在 pending），先尝试 rehydrate；
+            // 同时机会式给该账本其他 pending 成员补 wrap
+            if (!KeyChain.instance.hasDek(l.id)) {
+              await PendingDekResolver.rehydrate(requireLedgerId: l.id);
+            }
+            unawaited(PendingDekResolver.resolveOne(l.id));
             bumpRefresh();
           } catch (_) {}
         },
@@ -857,7 +867,7 @@ class _BillRow extends StatelessWidget {
                 ],
               ]),
               const SizedBox(height: 2),
-              Text(bill.account.name,
+              Text(bill.account.nameOf(bill.ledgerId),
                   style: TextStyle(fontSize: 12, color: AppColors.text2)),
             ]),
           ),

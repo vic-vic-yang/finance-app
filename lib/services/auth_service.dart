@@ -38,4 +38,10 @@ class AuthService {
     final token = await getToken();
     return token != null;
   }
+
+  /// 当前活动账本 id（加密 / 解密用）
+  static Future<String?> getCurrentLedgerId() async {
+    final user = await getUser();
+    return user?['currentLedgerId'] as String?;
+  }
 }

@@ -85,10 +85,27 @@ class ApiService {
     return data;
   }
 
-  static Future<Map<String, dynamic>> register(
-      String username, String password) async {
-    final data = await _post('/auth/register',
-        {'username': username, 'password': password});
+  /// 注册：客户端必须已经预生成密钥包（参见 lib/crypto/crypto_bootstrap.dart）
+  static Future<Map<String, dynamic>> register({
+    required String username,
+    required String password,
+    required String sm2PubKey,
+    required String sm2PrivByPwd,
+    required String sm2PrivByRecovery,
+    required String kdfSalt,
+    required String recoveryHash,
+    required String personalLedgerDekWrapped,
+  }) async {
+    final data = await _post('/auth/register', {
+      'username': username,
+      'password': password,
+      'sm2PubKey': sm2PubKey,
+      'sm2PrivByPwd': sm2PrivByPwd,
+      'sm2PrivByRecovery': sm2PrivByRecovery,
+      'kdfSalt': kdfSalt,
+      'recoveryHash': recoveryHash,
+      'personalLedgerDekWrapped': personalLedgerDekWrapped,
+    });
     if (data['token'] != null) {
       await AuthService.saveAuth(data['token'], data['user']);
     }
@@ -124,7 +141,8 @@ class ApiService {
           params: scope == null ? null : {'scope': scope});
 
   static Future<Map<String, dynamic>> createAccount({
-    required String name,
+    required String nameCipher,
+    required int nameDekVer,
     required String type,
     double initialBalance = 0,
     bool isShared = false,
@@ -141,7 +159,8 @@ class ApiService {
     String? autoDepositCategoryId,
   }) =>
       _post('/accounts', {
-        'name': name,
+        'nameCipher': nameCipher,
+        'nameDekVer': nameDekVer,
         'type': type,
         'initialBalance': initialBalance,
         'isShared': isShared,
@@ -245,7 +264,8 @@ class ApiService {
     required double amount,
     required String categoryId,
     required String accountId,
-    String note = '',
+    required String noteCipher,
+    required int noteDekVer,
     DateTime? date,
   }) =>
       _post('/bills', {
@@ -253,7 +273,8 @@ class ApiService {
         'amount': amount,
         'categoryId': categoryId,
         'accountId': accountId,
-        'note': note,
+        'noteCipher': noteCipher,
+        'noteDekVer': noteDekVer,
         'date': (date ?? DateTime.now()).toIso8601String(),
       });
 
@@ -263,7 +284,8 @@ class ApiService {
     required double amount,
     required String categoryId,
     required String accountId,
-    String note = '',
+    required String noteCipher,
+    required int noteDekVer,
     DateTime? date,
   }) =>
       _put('/bills/$id', {
@@ -271,7 +293,8 @@ class ApiService {
         'amount': amount,
         'categoryId': categoryId,
         'accountId': accountId,
-        'note': note,
+        'noteCipher': noteCipher,
+        'noteDekVer': noteDekVer,
         'date': (date ?? DateTime.now()).toIso8601String(),
       });
 
@@ -334,11 +357,33 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createLedger({
     required String name,
+    required String dekWrapped,
     String? icon,
   }) =>
       _post('/ledgers', {
         'name': name,
+        'dekWrapped': dekWrapped,
         if (icon != null) 'icon': icon,
+      });
+
+  /// 拉取我在所有账本里的 dekWrapped（登录后调一次）
+  static Future<Map<String, dynamic>> getMyDeks() =>
+      _get('/ledgers/keys/mine');
+
+  /// 列出该账本里"还没拿到 DEK"的待授权成员
+  static Future<Map<String, dynamic>> getPendingMembers(String ledgerId) =>
+      _get('/ledgers/$ledgerId/pending-members');
+
+  /// 把"给某成员包装好的 DEK"上传
+  static Future<Map<String, dynamic>> attachDek(
+    String ledgerId,
+    String memberUserId, {
+    required String dekWrapped,
+    required int dekVersion,
+  }) =>
+      _post('/ledgers/$ledgerId/members/$memberUserId/dek', {
+        'dekWrapped': dekWrapped,
+        'dekVersion': dekVersion,
       });
 
   static Future<Map<String, dynamic>> switchLedger(String id) =>

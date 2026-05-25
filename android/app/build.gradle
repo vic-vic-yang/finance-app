@@ -33,6 +33,11 @@ android {
         release {
             // 调试签名，方便本机/朋友手机安装。上架商店需要换成正式签名
             signingConfig = signingConfigs.debug
+            // 关闭 R8 minify 会让 apk 更大但避免 ML Kit 等可选模块的 missing class
+            // 这里保留 minify=true，并通过 proguard-rules.pro 显式 keep / dontwarn
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 }
@@ -42,5 +47,12 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
+    // AGP 8.9 + compileSdk 36 要求 desugar 2.1.4+
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
+
+    // ── Google ML Kit 文字识别：中文脚本 ──────────────────────
+    // google_mlkit_text_recognition 插件默认只带拉丁字母；
+    // lib/widgets/ocr_input_sheet.dart 使用 TextRecognitionScript.chinese，
+    // 必须显式引入对应的 native 依赖，否则 R8 会报 Missing class。
+    implementation 'com.google.mlkit:text-recognition-chinese:16.0.1'
 }

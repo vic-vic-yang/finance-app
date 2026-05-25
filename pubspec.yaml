@@ -18,6 +18,25 @@ dependencies:
   fl_chart: ^0.68.0
   provider: ^6.1.2
 
+  # 语音输入（手机原生 STT）
+  speech_to_text: ^7.0.0
+  # OCR 图片识别（Google ML Kit · 中文）
+  google_mlkit_text_recognition: ^0.13.0
+  # 拍照 / 从相册选图
+  image_picker: ^1.1.2
+  # 运行时权限（麦克风 / 相机）
+  permission_handler: ^11.3.1
+
+  # ── 国密加密（数据加密 + 端到端共享） ───────────────────
+  # SM2/SM3/SM4 国密算法（Flutter 实现，Dart 3+）
+  gm_crypto: ^1.0.0
+  # JSON serialization helper for crypto bundles
+  dart_sm_new: ^0.1.9
+  # 安全存储：解密后的私钥 / DEK 缓存到 Keychain / Keystore
+  flutter_secure_storage: ^9.2.2
+  # 密码学原语：PBKDF2、随机数（KDF / 恢复码生成）
+  pointycastle: ^3.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

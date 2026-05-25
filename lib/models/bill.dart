@@ -1,3 +1,5 @@
+import '../crypto/key_chain.dart';
+
 class BillCategory {
   final String id;
   final String name;
@@ -16,16 +18,35 @@ class BillCategory {
 
 class BillAccount {
   final String id;
-  final String name;
+  /// 账户名密文（用账本 DEK 解）
+  final String? nameCipher;
+  final int nameDekVer;
   final String type;
 
-  BillAccount({required this.id, required this.name, required this.type});
+  BillAccount({
+    required this.id,
+    this.nameCipher,
+    this.nameDekVer = 1,
+    required this.type,
+  });
 
   factory BillAccount.fromJson(Map<String, dynamic> j) => BillAccount(
         id: j['id'] as String,
-        name: j['name'] as String,
+        nameCipher: j['nameCipher'] as String?,
+        nameDekVer: (j['nameDekVer'] as num?)?.toInt() ?? 1,
         type: j['type'] as String,
       );
+
+  /// 客户端用账本 DEK 解出账户名（需要外部告知 ledgerId）
+  String nameOf(String ledgerId) {
+    if (nameCipher == null) return '【未命名】';
+    return KeyChain.instance.decryptText(
+      ledgerId: ledgerId,
+      cipherBase64: nameCipher!,
+      dekVer: nameDekVer,
+      systemFallback: '账户',
+    );
+  }
 }
 
 /// 记账人（共享账本下区分用）
@@ -55,40 +76,58 @@ class BillUser {
 
 class Bill {
   final String id;
+  final String ledgerId;
   final String type;
   final double amount;
   final BillCategory category;
   final BillAccount account;
-  final String note;
+  /// 备注密文（base64） + 加密版本（0 = 系统占位）
+  final String? noteCipher;
+  final int noteDekVer;
   final DateTime date;
   final BillUser? user; // 记账人
 
   Bill({
     required this.id,
+    required this.ledgerId,
     required this.type,
     required this.amount,
     required this.category,
     required this.account,
-    required this.note,
+    this.noteCipher,
+    this.noteDekVer = 1,
     required this.date,
     this.user,
   });
 
   factory Bill.fromJson(Map<String, dynamic> json) => Bill(
         id: json['id'] as String,
+        ledgerId: (json['ledgerId'] as String?) ?? '',
         type: json['type'] as String,
         amount: (json['amount'] as num).toDouble(),
         category: BillCategory.fromJson(json['category'] as Map<String, dynamic>),
         account: BillAccount.fromJson(json['account'] as Map<String, dynamic>),
-        note: json['note'] as String? ?? '',
+        noteCipher: json['noteCipher'] as String?,
+        noteDekVer: (json['noteDekVer'] as num?)?.toInt() ?? 1,
         date: DateTime.parse(json['date'] as String),
         user: json['user'] is Map<String, dynamic>
             ? BillUser.fromJson(json['user'] as Map<String, dynamic>)
             : null,
       );
 
+  /// 客户端用账本 DEK 解出来的备注
+  String get note {
+    if (noteCipher == null) return '';
+    if (noteDekVer == 0) return '自动入账';
+    return KeyChain.instance.decryptText(
+      ledgerId: ledgerId,
+      cipherBase64: noteCipher!,
+      dekVer: noteDekVer,
+    );
+  }
+
   bool get isIncome => type == 'income';
-  String get amountText => '${isIncome ? '+' : '-'}¥${amount.toStringAsFixed(2)}';
-  /// 记账人显示名（昵称优先，回退用户名）
+  String get amountText =>
+      '${isIncome ? '+' : '-'}¥${amount.toStringAsFixed(2)}';
   String? get recorderName => user?.displayName;
 }

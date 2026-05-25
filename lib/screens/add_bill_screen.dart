@@ -5,8 +5,12 @@ import '../core/theme.dart';
 import '../models/account.dart';
 import '../models/bill.dart';
 import '../models/category.dart';
+import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
+import '../services/bill_parser.dart';
 import '../services/recents_service.dart';
+import '../widgets/ocr_input_sheet.dart';
+import '../widgets/voice_input_sheet.dart';
 
 class AddBillScreen extends StatefulWidget {
   const AddBillScreen({super.key, this.bill});
@@ -192,7 +196,15 @@ class _AddBillScreenState extends State<AddBillScreen>
         );
         initAcc = myAccounts.firstWhere(
           (a) => a.id == b.account.id,
-          orElse: () => myAccounts.isNotEmpty ? myAccounts.first : Account(id: '', name: '', type: 'CASH', balance: 0),
+          orElse: () => myAccounts.isNotEmpty
+              ? myAccounts.first
+              : Account(
+                  id: '',
+                  ledgerId: '',
+                  nameCipher: null,
+                  type: 'CASH',
+                  balance: 0,
+                ),
         );
       } else {
         final typed = allCats.where((c) => c.type == _type).toList();
@@ -356,6 +368,14 @@ class _AddBillScreenState extends State<AddBillScreen>
 
     setState(() => _saving = true);
     try {
+      // 用所选账户所在账本的 DEK 加密 note（空备注也加密，避免泄露"是否填了"信号）
+      final ledgerId = _selectedAccount!.ledgerId;
+      final dekVer = KeyChain.instance.dekVersionOf(ledgerId) ?? 1;
+      final noteCipher = KeyChain.instance.encryptText(
+        ledgerId: ledgerId,
+        plain: _noteCtrl.text.trim(),
+      );
+
       if (widget.bill != null) {
         await ApiService.updateBill(
           widget.bill!.id,
@@ -363,7 +383,8 @@ class _AddBillScreenState extends State<AddBillScreen>
           amount: amount,
           categoryId: _selectedCategory!.id,
           accountId: _selectedAccount!.id,
-          note: _noteCtrl.text.trim(),
+          noteCipher: noteCipher,
+          noteDekVer: dekVer,
           date: _date,
         );
       } else {
@@ -372,7 +393,8 @@ class _AddBillScreenState extends State<AddBillScreen>
           amount: amount,
           categoryId: _selectedCategory!.id,
           accountId: _selectedAccount!.id,
-          note: _noteCtrl.text.trim(),
+          noteCipher: noteCipher,
+          noteDekVer: dekVer,
           date: _date,
         );
       }
@@ -395,6 +417,92 @@ class _AddBillScreenState extends State<AddBillScreen>
       backgroundColor: AppColors.text1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
+  }
+
+  // ── 语音 / OCR 快捷输入 ───────────────────────────────────────
+  Future<void> _openVoiceInput() async {
+    if (!_loaded) return;
+    final draft = await showModalBottomSheet<BillDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => VoiceInputSheet(categories: _categories),
+    );
+    if (draft != null) _applyDraft(draft);
+  }
+
+  Future<void> _openOcrInput() async {
+    if (!_loaded) return;
+    final draft = await showModalBottomSheet<BillDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => OcrInputSheet(categories: _categories),
+    );
+    if (draft != null) _applyDraft(draft);
+  }
+
+  /// 把语音 / OCR 解析出来的 [BillDraft] 套进当前表单。
+  /// - 切对应 tab（收 / 支）
+  /// - 金额：清空 terms，按解析金额填回数字键盘
+  /// - 分类：如果命中就替换；没命中保留当前选择
+  /// - 备注：把原始文本追加到备注（已有内容时换行）
+  void _applyDraft(BillDraft draft) {
+    // 不允许把"转账"切走的人通过解析改成收/支 —— 但目前 _applyDraft 只在
+    // widget.bill == null 时才会被触发，这里继续维持新建模式的两种类型
+    setState(() {
+      final wantIdx = draft.type == 'income' ? 1 : 0;
+      if (_tabCtrl.index != wantIdx) {
+        _tabCtrl.animateTo(wantIdx);
+        _type = draft.type;
+        _selectedCategory = _filteredCategories.isNotEmpty
+            ? _filteredCategories.first
+            : null;
+      }
+
+      // 金额：重置算式 + 用解析金额填字符串
+      _terms.clear();
+      _pendingOp = '+';
+      final amt = draft.amount;
+      if (amt != null && amt > 0) {
+        _amountStr = amt == amt.truncateToDouble()
+            ? amt.toInt().toString()
+            : amt.toStringAsFixed(2);
+      } else {
+        _amountStr = '';
+      }
+
+      // 分类：命中才替换
+      if (draft.category != null) {
+        // 用 id 在 _categories 里再找一次，避免 Category 引用对不上
+        final hit = _categories
+            .where((c) => c.id == draft.category!.id)
+            .firstOrNull;
+        if (hit != null) _selectedCategory = hit;
+      }
+
+      // 备注：把原始文本接进去（同已有内容用空行隔开）
+      final extra = draft.rawText.trim();
+      if (extra.isNotEmpty) {
+        final cur = _noteCtrl.text.trim();
+        _noteCtrl.text = cur.isEmpty ? extra : '$cur\n$extra';
+      }
+    });
+
+    // 给用户一个反馈
+    final amt = draft.amount;
+    if (amt == null) {
+      _toast('没解析到金额，请手动输入');
+    } else {
+      _toast(
+          '已填入 ¥${amt.toStringAsFixed(2)}${draft.category != null ? " · ${draft.category!.name}" : ""}');
+    }
   }
 
   String _formatDate(DateTime d) {
@@ -530,8 +638,22 @@ class _AddBillScreenState extends State<AddBillScreen>
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-                // 保存/完成已移到数字键盘右下角；这里只留一个等宽占位维持标题居中
-                const SizedBox(width: 48),
+                // 仅"新建"模式提供语音 / OCR 快捷入口（编辑模式藏起避免误覆盖）
+                if (widget.bill == null) ...[
+                  IconButton(
+                    tooltip: '语音记账',
+                    icon: const Icon(Icons.mic_none_rounded,
+                        color: Colors.white, size: 22),
+                    onPressed: _openVoiceInput,
+                  ),
+                  IconButton(
+                    tooltip: '拍照记账',
+                    icon: const Icon(Icons.document_scanner_outlined,
+                        color: Colors.white, size: 21),
+                    onPressed: _openOcrInput,
+                  ),
+                ] else
+                  const SizedBox(width: 48),
               ]),
             ),
             TabBar(

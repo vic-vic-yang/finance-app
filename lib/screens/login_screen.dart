@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import '../crypto/crypto_bootstrap.dart';
+import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
+import '../services/pending_dek_resolver.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,13 +30,56 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final result = await ApiService.login(username, password);
       if (!mounted) return;
-      if (result['token'] != null) {
-        Navigator.pushReplacementNamed(context, '/main');
-      } else {
+      if (result['token'] == null) {
         _snack(result['message'] ?? '登录失败');
+        return;
       }
-    } catch (_) {
-      _snack('网络错误，请重试');
+
+      // 1. 用密码解出 SM2 私钥（PBKDF2 + SM4 大约 1~2 秒）
+      final bundle = result['keyBundle'] as Map<String, dynamic>?;
+      if (bundle == null ||
+          bundle['sm2PubKey'] == null ||
+          bundle['sm2PrivByPwd'] == null ||
+          bundle['kdfSalt'] == null) {
+        _snack('该账号尚未启用加密，请联系管理员或重新注册');
+        return;
+      }
+      final privHex = await Future(() =>
+          CryptoBootstrap.decryptPrivateKeyByPassword(
+            password: password,
+            privByPwdBase64: bundle['sm2PrivByPwd'] as String,
+            saltBase64: bundle['kdfSalt'] as String,
+          ));
+
+      await KeyChain.instance.setSelf(
+        pubKey: bundle['sm2PubKey'] as String,
+        privKey: privHex,
+        persist: true,
+      );
+
+      // 2. 拉取自己在所有账本里的 dekWrapped，全部解开缓存
+      final deks = await ApiService.getMyDeks();
+      final list = (deks['deks'] as List?) ?? [];
+      for (final d in list) {
+        try {
+          KeyChain.instance.loadDek(
+            ledgerId: d['ledgerId'] as String,
+            dekWrappedBase64: d['dekWrapped'] as String,
+            dekVersion: d['dekVersion'] as int,
+          );
+        } catch (_) {
+          // 某个账本解不开（极少见，私钥不匹配）—— 跳过，其他账本仍可用
+        }
+      }
+
+      // 3. 机会式：给所有账本里 pending 的新成员补 wrap DEK（不阻塞跳转）
+      PendingDekResolver.resetCooldown();
+      unawaited(PendingDekResolver.resolveAll());
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/main');
+    } catch (e) {
+      _snack('登录失败：$e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

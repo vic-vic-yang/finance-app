@@ -2,8 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
 import 'account_detail_screen.dart';
 
 double math_pow(double a, double b) => math.pow(a, b).toDouble();
@@ -42,6 +45,11 @@ class _AccountsScreenState extends State<AccountsScreen>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      // 进入账户页时：如果本账本 DEK 还没拿到（pending 状态），尝试重拉一次
+      final cur = await AuthService.getCurrentLedgerId();
+      if (cur != null && !KeyChain.instance.hasDek(cur)) {
+        await PendingDekResolver.rehydrate(requireLedgerId: cur);
+      }
       final res = await ApiService.getAccounts();
       if (!mounted) return;
       setState(() {
@@ -1394,9 +1402,23 @@ class _AccountSheetState extends State<_AccountSheet> {
 
     setState(() => _saving = true);
     try {
+      // 找到目标账本 id —— 编辑时用现有账户的；新建用当前账本
+      final ledgerId = widget.account?.ledgerId ??
+          await AuthService.getCurrentLedgerId() ?? '';
+      if (ledgerId.isEmpty || !KeyChain.instance.hasDek(ledgerId)) {
+        _toast('账本密钥尚未就绪，请稍后重试');
+        return;
+      }
+      final dekVer = KeyChain.instance.dekVersionOf(ledgerId) ?? 1;
+      final nameCipher = KeyChain.instance.encryptText(
+        ledgerId: ledgerId,
+        plain: name,
+      );
+
       if (widget.account != null) {
         await ApiService.updateAccount(widget.account!.id, {
-          'name': name,
+          'nameCipher': nameCipher,
+          'nameDekVer': dekVer,
           'type': _type,
           'isShared': _isShared,
           'statementDay': statementDay,
@@ -1412,7 +1434,8 @@ class _AccountSheetState extends State<_AccountSheet> {
         });
       } else {
         await ApiService.createAccount(
-          name: name,
+          nameCipher: nameCipher,
+          nameDekVer: dekVer,
           type: _type,
           initialBalance: balance,
           isShared: _isShared,

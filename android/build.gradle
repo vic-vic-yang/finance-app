@@ -1,5 +1,9 @@
 allprojects {
     repositories {
+        // 阿里云镜像优先（国内 dl.google.com 经常 TLS 握手失败）
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
         google()
         mavenCentral()
     }

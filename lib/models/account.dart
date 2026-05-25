@@ -1,6 +1,12 @@
+import '../crypto/key_chain.dart';
+
 class Account {
   final String id;
-  final String name;
+  /// 服务端拿到的密文 + 加密版本（用账本 DEK 解）
+  final String? nameCipher;
+  final int nameDekVer;
+  /// 隶属账本 id（解密需要）
+  final String ledgerId;
   final String type;
   final double balance;
   final String? icon;
@@ -46,7 +52,9 @@ class Account {
 
   Account({
     required this.id,
-    required this.name,
+    required this.ledgerId,
+    required this.nameCipher,
+    this.nameDekVer = 1,
     required this.type,
     required this.balance,
     this.icon,
@@ -70,9 +78,22 @@ class Account {
     this.info,
   });
 
+  /// 客户端用账本 DEK 解密的账户名
+  String get name {
+    if (nameCipher == null) return '【未命名】';
+    return KeyChain.instance.decryptText(
+      ledgerId: ledgerId,
+      cipherBase64: nameCipher!,
+      dekVer: nameDekVer,
+      systemFallback: '账户',
+    );
+  }
+
   factory Account.fromJson(Map<String, dynamic> json) => Account(
         id: json['id'] as String,
-        name: json['name'] as String,
+        ledgerId: (json['ledgerId'] as String?) ?? '',
+        nameCipher: json['nameCipher'] as String?,
+        nameDekVer: (json['nameDekVer'] as num?)?.toInt() ?? 1,
         type: json['type'] as String,
         balance: (json['balance'] as num?)?.toDouble() ?? 0,
         icon: json['icon'] as String?,

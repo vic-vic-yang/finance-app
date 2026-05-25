@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/refresh_bus.dart';
+import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
 import 'ledgers_screen.dart';
@@ -443,6 +445,9 @@ class _ProfileScreenState extends State<ProfileScreen>
           );
           if (ok == true && mounted) {
             await AuthService.logout();
+            // 端到端密钥：清掉本地缓存的私钥 / DEK / 冷却
+            await KeyChain.instance.clear();
+            PendingDekResolver.resetCooldown();
             if (mounted) {
               Navigator.pushNamedAndRemoveUntil(
                   context, '/login', (_) => false);
