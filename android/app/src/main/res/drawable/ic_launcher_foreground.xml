@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 圆角矩形背景内的 "¥" 字符设计 -->
+    <group android:scaleX="2.4" android:scaleY="2.4"
+           android:translateX="22" android:translateY="22">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16,2 L11,11 L16,11 L16,14 L10,14 L10,16 L16,16 L16,19 L10,19 L10,26 L7,26 L7,19 L1,19 L1,16 L7,16 L7,14 L1,14 L1,11 L6,11 L1,2 L4.5,2 L8.5,9.5 L12.5,2 Z" />
+    </group>
+</vector>

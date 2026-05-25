@@ -1,0 +1,785 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../core/refresh_bus.dart';
+import '../core/theme.dart';
+import '../models/bill.dart';
+import '../services/api_service.dart';
+import 'add_bill_screen.dart';
+
+class BillsScreen extends StatefulWidget {
+  const BillsScreen({super.key});
+  @override
+  State<BillsScreen> createState() => _BillsScreenState();
+}
+
+class _BillsScreenState extends State<BillsScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  final _scroll = ScrollController();
+  List<Bill> _bills = [];
+  double _totalIncome  = 0;
+  double _totalExpense = 0;
+  bool   _loading = true;
+  bool   _loadingMore = false;
+  bool   _hasMore = true;
+  String? _filterType;
+  String? _filterUserId; // 按记账人筛选
+  // 时间筛选：mode + 锚点日期
+  _DateMode _dateMode = _DateMode.all;
+  DateTime _dateAnchor = DateTime.now();
+  int    _page = 1;
+
+  // 算出 startDate / endDate（ISO 字符串）
+  String? get _startDate {
+    if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-01-01';
+    final m = _dateAnchor.month.toString().padLeft(2, '0');
+    return '${_dateAnchor.year}-$m-01';
+  }
+
+  String? get _endDate {
+    if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-12-31';
+    final last = DateTime(_dateAnchor.year, _dateAnchor.month + 1, 0).day;
+    final m = _dateAnchor.month.toString().padLeft(2, '0');
+    return '${_dateAnchor.year}-$m-${last.toString().padLeft(2, '0')}';
+  }
+
+  String get _dateLabel {
+    switch (_dateMode) {
+      case _DateMode.all:
+        return '全部时间';
+      case _DateMode.year:
+        return '${_dateAnchor.year}年';
+      case _DateMode.month:
+        return '${_dateAnchor.year}年${_dateAnchor.month}月';
+    }
+  }
+
+  // 当前账本成员（用于筛选下拉，name 优先取昵称）
+  List<({String id, String name})> _members = [];
+  bool _isSharedLedger = false;
+
+  @override
+  void initState() {
+    super.initState();
+    refreshBus.addListener(_onBump);
+    _loadMembers();
+    _load(refresh: true);
+    _scroll.addListener(() {
+      if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 200 &&
+          !_loadingMore && _hasMore) {
+        _loadMore();
+      }
+    });
+  }
+
+  Future<void> _loadMembers() async {
+    try {
+      final res = await ApiService.getLedgers();
+      final ledgers = (res['ledgers'] as List? ?? []);
+      final currentId = res['currentLedgerId'] as String?;
+      final current = ledgers.cast<Map<String, dynamic>>().firstWhere(
+            (l) => l['id'] == currentId,
+            orElse: () => {},
+          );
+      final memberCount = (current['memberCount'] as num?)?.toInt() ?? 1;
+      if (memberCount <= 1 || currentId == null) {
+        if (mounted) setState(() => _isSharedLedger = false);
+        return;
+      }
+      final mRes = await ApiService.getMembers(currentId);
+      final m = (mRes['members'] as List? ?? [])
+          .map((e) {
+            final em = e as Map;
+            final nick = (em['nickname'] as String? ?? '').trim();
+            final uname = em['username'] as String? ?? '';
+            return (
+              id: em['userId'] as String,
+              name: nick.isNotEmpty ? nick : uname,
+            );
+          })
+          .toList();
+      if (mounted) {
+        setState(() {
+          _members = m;
+          _isSharedLedger = true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    refreshBus.removeListener(_onBump);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onBump() {
+    if (mounted) _load(refresh: true);
+  }
+
+  Future<void> _load({bool refresh = false}) async {
+    if (refresh) {
+      setState(() { _loading = true; _page = 1; _hasMore = true; });
+    }
+    try {
+      final res = await ApiService.getBills(
+        page: 1,
+        limit: 20,
+        type: _filterType,
+        userId: _filterUserId,
+        startDate: _startDate,
+        endDate: _endDate,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bills       = (res['bills'] as List? ?? []).map((b) => Bill.fromJson(b)).toList();
+        _totalIncome  = (res['summary']?['totalIncome']  as num?)?.toDouble() ?? 0;
+        _totalExpense = (res['summary']?['totalExpense'] as num?)?.toDouble() ?? 0;
+        _hasMore     = _bills.length >= 20;
+        _page        = 2;
+        _loading     = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _loadingMore = true);
+    try {
+      final res = await ApiService.getBills(
+        page: _page,
+        limit: 20,
+        type: _filterType,
+        userId: _filterUserId,
+        startDate: _startDate,
+        endDate: _endDate,
+      );
+      if (!mounted) return;
+      final more = (res['bills'] as List? ?? []).map((b) => Bill.fromJson(b)).toList();
+      setState(() {
+        _bills.addAll(more);
+        _hasMore = more.length >= 20;
+        _page++;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _deleteBill(Bill bill) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('确认删除'),
+        content: Text('删除「${bill.category.name}」¥${bill.amount.toStringAsFixed(2)}？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除', style: TextStyle(color: AppColors.expense)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ApiService.deleteBill(bill.id);
+    bumpRefresh();
+  }
+
+  // 按日期分组
+  Map<String, List<Bill>> get _grouped {
+    final map = <String, List<Bill>>{};
+    for (final b in _bills) {
+      final key = DateFormat('yyyy-MM-dd').format(b.date);
+      map.putIfAbsent(key, () => []).add(b);
+    }
+    return map;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('账单'),
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(_isSharedLedger ? 92 : 92),
+          child: _filterBar(),
+        ),
+      ),
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : RefreshIndicator(
+              color: AppColors.primary,
+              onRefresh: () => _load(refresh: true),
+              child: _bills.isEmpty ? _empty() : _list(),
+            ),
+    );
+  }
+
+  Widget _filterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 第 1 行：时间筛选 + 汇总
+          SizedBox(
+            height: 38,
+            child: Row(children: [
+              _dateFilterButton(),
+              const Spacer(),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 12),
+                  children: [
+                    if (_totalIncome > 0)
+                      TextSpan(
+                          text: '+¥${_totalIncome.toStringAsFixed(0)}  ',
+                          style: const TextStyle(
+                              color: AppColors.income,
+                              fontWeight: FontWeight.w600)),
+                    if (_totalExpense > 0)
+                      TextSpan(
+                          text: '-¥${_totalExpense.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              color: AppColors.expense,
+                              fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 4),
+          // 第 2 行：类型 + 成员
+          SizedBox(
+            height: 38,
+            child: Row(children: [
+              _chip('全部', null),
+              const SizedBox(width: 8),
+              _chip('收入', 'income'),
+              const SizedBox(width: 8),
+              _chip('支出', 'expense'),
+              if (_isSharedLedger) ...[
+                const Spacer(),
+                _userFilterButton(),
+              ],
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateFilterButton() {
+    final isAll = _dateMode == _DateMode.all;
+    return InkWell(
+      onTap: _openDateSheet,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isAll ? AppColors.surface : AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: isAll ? AppColors.border : AppColors.primary),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.calendar_today_rounded,
+              size: 13,
+              color: isAll ? AppColors.text2 : AppColors.primary),
+          const SizedBox(width: 6),
+          Text(_dateLabel,
+              style: TextStyle(
+                fontSize: 13,
+                color: isAll ? AppColors.text2 : AppColors.primary,
+                fontWeight:
+                    isAll ? FontWeight.normal : FontWeight.w600,
+              )),
+          // 月/年模式时允许左右翻
+          if (!isAll) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (_dateMode == _DateMode.month) {
+                    _dateAnchor = DateTime(
+                        _dateAnchor.year, _dateAnchor.month - 1);
+                  } else {
+                    _dateAnchor = DateTime(_dateAnchor.year - 1, 1);
+                  }
+                });
+                _load(refresh: true);
+              },
+              child: Icon(Icons.chevron_left_rounded,
+                  size: 18, color: AppColors.primary),
+            ),
+            GestureDetector(
+              onTap: _canGoNextDate
+                  ? () {
+                      setState(() {
+                        if (_dateMode == _DateMode.month) {
+                          _dateAnchor = DateTime(
+                              _dateAnchor.year, _dateAnchor.month + 1);
+                        } else {
+                          _dateAnchor =
+                              DateTime(_dateAnchor.year + 1, 1);
+                        }
+                      });
+                      _load(refresh: true);
+                    }
+                  : null,
+              child: Icon(Icons.chevron_right_rounded,
+                  size: 18,
+                  color: _canGoNextDate
+                      ? AppColors.primary
+                      : AppColors.text3),
+            ),
+          ] else
+            Icon(Icons.arrow_drop_down_rounded,
+                size: 16, color: AppColors.text2),
+        ]),
+      ),
+    );
+  }
+
+  bool get _canGoNextDate {
+    final now = DateTime.now();
+    if (_dateMode == _DateMode.year) return _dateAnchor.year < now.year;
+    if (_dateMode == _DateMode.month) {
+      return _dateAnchor.isBefore(DateTime(now.year, now.month));
+    }
+    return false;
+  }
+
+  void _openDateSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        final now = DateTime.now();
+        Widget tile(String label, _DateMode mode, DateTime anchor) {
+          final selected = _dateMode == mode &&
+              _dateAnchor.year == anchor.year &&
+              (mode != _DateMode.month ||
+                  _dateAnchor.month == anchor.month);
+          return ListTile(
+            onTap: () {
+              Navigator.pop(context);
+              setState(() {
+                _dateMode = mode;
+                _dateAnchor = anchor;
+              });
+              _load(refresh: true);
+            },
+            title: Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight:
+                        selected ? FontWeight.w600 : FontWeight.normal,
+                    color: selected
+                        ? AppColors.primary
+                        : AppColors.text1)),
+            trailing: selected
+                ? Icon(Icons.check_rounded,
+                    color: AppColors.primary, size: 18)
+                : null,
+            visualDensity:
+                const VisualDensity(vertical: -2),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 4),
+                child: Row(children: [
+                  Text('选择时间',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text1)),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close_rounded,
+                        color: AppColors.text2),
+                  ),
+                ]),
+              ),
+              tile('全部时间', _DateMode.all, _dateAnchor),
+              Divider(height: 1, color: AppColors.border),
+              tile('本月', _DateMode.month,
+                  DateTime(now.year, now.month)),
+              tile('上月', _DateMode.month,
+                  DateTime(now.year, now.month - 1)),
+              tile('本年', _DateMode.year, DateTime(now.year)),
+              tile('上年', _DateMode.year, DateTime(now.year - 1)),
+              Divider(height: 1, color: AppColors.border),
+              ListTile(
+                title: Text('选择月份…',
+                    style: TextStyle(
+                        fontSize: 14, color: AppColors.text1)),
+                trailing: Icon(Icons.chevron_right_rounded,
+                    color: AppColors.text2),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _dateAnchor,
+                    firstDate: DateTime(2010),
+                    lastDate: DateTime.now(),
+                    helpText: '选择月份',
+                  );
+                  if (picked != null && mounted) {
+                    setState(() {
+                      _dateMode = _DateMode.month;
+                      _dateAnchor =
+                          DateTime(picked.year, picked.month);
+                    });
+                    _load(refresh: true);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 记账人筛选下拉按钮
+  Widget _userFilterButton() {
+    final selected = _filterUserId != null;
+    final currentName = selected
+        ? _members.firstWhere(
+            (m) => m.id == _filterUserId,
+            orElse: () => (id: '', name: '?'),
+          ).name
+        : null;
+    final label = currentName ?? '全员';
+    // PopupMenuButton 把 null 当成"取消"处理 → onSelected 不会触发，
+    // 所以"全员"必须用一个非空哨兵值。
+    const allSentinel = '__all__';
+    return PopupMenuButton<String>(
+      tooltip: '按记账人筛选',
+      onSelected: (v) {
+        final next = v == allSentinel ? null : v;
+        if (_filterUserId == next) return;
+        setState(() => _filterUserId = next);
+        _load(refresh: true);
+      },
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.border),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          value: allSentinel,
+          child: Row(children: [
+            Icon(Icons.groups_rounded,
+                size: 18,
+                color: _filterUserId == null
+                    ? AppColors.primary
+                    : AppColors.text2),
+            const SizedBox(width: 10),
+            Text('全员',
+                style: TextStyle(
+                    color: _filterUserId == null
+                        ? AppColors.primary
+                        : AppColors.text1,
+                    fontWeight: _filterUserId == null
+                        ? FontWeight.w600
+                        : FontWeight.normal)),
+          ]),
+        ),
+        ..._members.map((m) => PopupMenuItem<String>(
+              value: m.id,
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 9,
+                  backgroundColor: AppColors.primary,
+                  child: Text(
+                    m.name.isEmpty
+                        ? '?'
+                        : m.name.substring(0, 1).toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 9,
+                        color: AppColors.onPrimary,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(m.name,
+                    style: TextStyle(
+                        color: _filterUserId == m.id
+                            ? AppColors.primary
+                            : AppColors.text1,
+                        fontWeight: _filterUserId == m.id
+                            ? FontWeight.w600
+                            : FontWeight.normal)),
+              ]),
+            )),
+      ],
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryLight : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.person_outline_rounded,
+              size: 14,
+              color: selected ? AppColors.primary : AppColors.text2),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                fontSize: 13,
+                color: selected ? AppColors.primary : AppColors.text2,
+                fontWeight:
+                    selected ? FontWeight.w600 : FontWeight.normal,
+              )),
+          const SizedBox(width: 2),
+          Icon(Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: selected ? AppColors.primary : AppColors.text2),
+        ]),
+      ),
+    );
+  }
+
+  Widget _chip(String label, String? type) {
+    final selected = _filterType == type;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) {
+        if (_filterType == type) return;
+        setState(() => _filterType = type);
+        _load(refresh: true);
+      },
+      selectedColor: AppColors.primaryLight,
+      labelStyle: TextStyle(
+        color: selected ? AppColors.primary : AppColors.text2,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        fontSize: 13,
+      ),
+    );
+  }
+
+  Widget _list() {
+    final groups = _grouped;
+    final dates  = groups.keys.toList();
+    return ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      itemCount: dates.length + (_loadingMore ? 1 : 0),
+      itemBuilder: (_, i) {
+        if (i == dates.length) {
+          return Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          );
+        }
+        final date  = dates[i];
+        final items = groups[date]!;
+        final dayIncome  = items.where((b) => b.isIncome).fold(0.0, (s, b) => s + b.amount);
+        final dayExpense = items.where((b) => !b.isIncome).fold(0.0, (s, b) => s + b.amount);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            // 日期头
+            Row(children: [
+              Text(_formatDate(date),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text2)),
+              const Spacer(),
+              if (dayIncome > 0)
+                Text('+¥${dayIncome.toStringAsFixed(2)} ',
+                    style: const TextStyle(fontSize: 12, color: AppColors.income)),
+              if (dayExpense > 0)
+                Text('-¥${dayExpense.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.expense)),
+            ]),
+            const SizedBox(height: 6),
+            // 账单列表
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: items.asMap().entries.map((e) {
+                  final isLast = e.key == items.length - 1;
+                  return _BillTile(
+                    bill: e.value,
+                    showDivider: !isLast,
+                    showRecorder: _isSharedLedger,
+                    onTap: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AddBillScreen(bill: e.value),
+                        ),
+                      );
+                      if (result == true) _load(refresh: true);
+                    },
+                    onDelete: () => _deleteBill(e.value),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatDate(String dateStr) {
+    final date = DateTime.parse(dateStr);
+    final now  = DateTime.now();
+    final today     = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final d = DateTime(date.year, date.month, date.day);
+    if (d == today)     return '今天';
+    if (d == yesterday) return '昨天';
+    return DateFormat('M月d日 EEEE', 'zh').format(date);
+  }
+
+  Widget _empty() => Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Text('🧾', style: TextStyle(fontSize: 48)),
+          const SizedBox(height: 12),
+          Text('还没有账单', style: TextStyle(color: AppColors.text2, fontSize: 16)),
+          const SizedBox(height: 6),
+          Text('点击右下角 + 开始记账',
+              style: TextStyle(color: AppColors.text2, fontSize: 13)),
+        ]),
+      );
+}
+
+class _BillTile extends StatelessWidget {
+  const _BillTile({
+    required this.bill,
+    required this.showDivider,
+    required this.onTap,
+    required this.onDelete,
+    this.showRecorder = false,
+  });
+  final Bill bill;
+  final bool showDivider;
+  final bool showRecorder;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: bill.isIncome ? AppColors.incomeLight : AppColors.expenseLight,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Center(
+                  child: Text(
+                    bill.category.icon ?? (bill.isIncome ? '💰' : '💸'),
+                    style: const TextStyle(fontSize: 19),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(bill.category.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.text1)),
+                    ),
+                    // 共享账本下显示记账人小标
+                    if (showRecorder && bill.recorderName != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(bill.recorderName!,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.text2,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                    ],
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(
+                    bill.note.isEmpty ? bill.account.name : '${bill.account.name}  ${bill.note}',
+                    style: TextStyle(fontSize: 12, color: AppColors.text2),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(bill.amountText,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: bill.isIncome ? AppColors.income : AppColors.expense)),
+                const SizedBox(height: 2),
+                Text(DateFormat('HH:mm').format(bill.date),
+                    style: TextStyle(fontSize: 11, color: AppColors.text2)),
+              ]),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: onDelete,
+                child: Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.delete_outline_rounded,
+                      size: 18, color: AppColors.text2),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        if (showDivider)
+          const Divider(height: 1, indent: 66),
+      ],
+    );
+  }
+}
+
+enum _DateMode { all, month, year }
