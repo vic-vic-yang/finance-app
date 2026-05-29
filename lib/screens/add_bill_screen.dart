@@ -7,10 +7,7 @@ import '../models/bill.dart';
 import '../models/category.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
-import '../services/bill_parser.dart';
 import '../services/recents_service.dart';
-import '../widgets/ocr_input_sheet.dart';
-import '../widgets/voice_input_sheet.dart';
 
 class AddBillScreen extends StatefulWidget {
   const AddBillScreen({super.key, this.bill});
@@ -419,91 +416,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     ));
   }
 
-  // ── 语音 / OCR 快捷输入 ───────────────────────────────────────
-  Future<void> _openVoiceInput() async {
-    if (!_loaded) return;
-    final draft = await showModalBottomSheet<BillDraft>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => VoiceInputSheet(categories: _categories),
-    );
-    if (draft != null) _applyDraft(draft);
-  }
-
-  Future<void> _openOcrInput() async {
-    if (!_loaded) return;
-    final draft = await showModalBottomSheet<BillDraft>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => OcrInputSheet(categories: _categories),
-    );
-    if (draft != null) _applyDraft(draft);
-  }
-
-  /// 把语音 / OCR 解析出来的 [BillDraft] 套进当前表单。
-  /// - 切对应 tab（收 / 支）
-  /// - 金额：清空 terms，按解析金额填回数字键盘
-  /// - 分类：如果命中就替换；没命中保留当前选择
-  /// - 备注：把原始文本追加到备注（已有内容时换行）
-  void _applyDraft(BillDraft draft) {
-    // 不允许把"转账"切走的人通过解析改成收/支 —— 但目前 _applyDraft 只在
-    // widget.bill == null 时才会被触发，这里继续维持新建模式的两种类型
-    setState(() {
-      final wantIdx = draft.type == 'income' ? 1 : 0;
-      if (_tabCtrl.index != wantIdx) {
-        _tabCtrl.animateTo(wantIdx);
-        _type = draft.type;
-        _selectedCategory = _filteredCategories.isNotEmpty
-            ? _filteredCategories.first
-            : null;
-      }
-
-      // 金额：重置算式 + 用解析金额填字符串
-      _terms.clear();
-      _pendingOp = '+';
-      final amt = draft.amount;
-      if (amt != null && amt > 0) {
-        _amountStr = amt == amt.truncateToDouble()
-            ? amt.toInt().toString()
-            : amt.toStringAsFixed(2);
-      } else {
-        _amountStr = '';
-      }
-
-      // 分类：命中才替换
-      if (draft.category != null) {
-        // 用 id 在 _categories 里再找一次，避免 Category 引用对不上
-        final hit = _categories
-            .where((c) => c.id == draft.category!.id)
-            .firstOrNull;
-        if (hit != null) _selectedCategory = hit;
-      }
-
-      // 备注：把原始文本接进去（同已有内容用空行隔开）
-      final extra = draft.rawText.trim();
-      if (extra.isNotEmpty) {
-        final cur = _noteCtrl.text.trim();
-        _noteCtrl.text = cur.isEmpty ? extra : '$cur\n$extra';
-      }
-    });
-
-    // 给用户一个反馈
-    final amt = draft.amount;
-    if (amt == null) {
-      _toast('没解析到金额，请手动输入');
-    } else {
-      _toast(
-          '已填入 ¥${amt.toStringAsFixed(2)}${draft.category != null ? " · ${draft.category!.name}" : ""}');
-    }
-  }
+  // 语音 / OCR 入口已下架：AI 智能记账走 /ai/imports 流水线（上传文件 → 后端 LLM 解析）
 
   String _formatDate(DateTime d) {
     final now = DateTime.now();
@@ -638,22 +551,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-                // 仅"新建"模式提供语音 / OCR 快捷入口（编辑模式藏起避免误覆盖）
-                if (widget.bill == null) ...[
-                  IconButton(
-                    tooltip: '语音记账',
-                    icon: const Icon(Icons.mic_none_rounded,
-                        color: Colors.white, size: 22),
-                    onPressed: _openVoiceInput,
-                  ),
-                  IconButton(
-                    tooltip: '拍照记账',
-                    icon: const Icon(Icons.document_scanner_outlined,
-                        color: Colors.white, size: 21),
-                    onPressed: _openOcrInput,
-                  ),
-                ] else
-                  const SizedBox(width: 48),
+                // 占位维持标题居中
+                const SizedBox(width: 48),
               ]),
             ),
             TabBar(
@@ -1322,25 +1221,87 @@ Future<Category?> _promptNewCategory({
   required String? parentName,
 }) async {
   final nameCtrl = TextEditingController();
-  final iconCtrl = TextEditingController();
+  String? selectedIcon;
   bool saving = false;
   String? errorMsg;
 
-  // 给一些常用 emoji 让用户点
   final isExpense = type == 'expense';
-  final suggested = isExpense
-      ? ['🛒', '💼', '🍔', '🚗', '🏠', '🎉', '💊', '📚', '🎮', '✈️', '🐾', '💡']
-      : ['💰', '🎁', '📈', '💼', '🧾', '🏦', '🪙', '💵', '🎯', '🎊'];
 
   return showDialog<Category?>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setLocal) => AlertDialog(
+      builder: (ctx, setLocal) {
+        // 图标库：按场景分组
+        const incomeIcons = [
+          '💰', '🎁', '💼', '📈', '🧾', '🧧', '💵', '🪙', '💎', '🏦',
+          '📊', '💹', '🎯', '🎊', '🎀', '📋', '🏆', '✨', '🔔', '💝',
+          '🤑', '📬', '💳', '💶', '💷', '💴', '🪪',
+        ];
+        const expenseFoodIcons = ['🍜', '🍔', '🍕', '🥗', '🍰', '☕', '🍺', '🍷', '🥤', '🍿', '🥬', '🥩', '🍱', '🍲', '🥟', '🍩', '🧋', '🍵'];
+        const expenseTransportIcons = ['🚗', '🚌', '🚇', '✈️', '🚂', '🚄', '🚲', '⛽', '🅿️', '🛵', '🚕', '🚢', '🛴', '🚃'];
+        const expenseShopIcons = ['🛒', '👕', '👟', '👜', '💄', '📱', '💻', '🛋️', '⌚', '🎧', '📷', '🖨️', '🧴', '🪥', '👓'];
+        const expenseHomeIcons = ['🏠', '🔧', '💡', '💧', '🔥', '🧹', '🛏️', '🚿', '🪴', '🪟', '🛎️', '🗑️'];
+        const expensePlayIcons = ['🎮', '🎬', '🎤', '🎫', '🏨', '🌴', '🎪', '🎲', '🎯', '🎸', '🎨', '🧩', '🎭', '🏖️'];
+        const expenseHealthIcons = ['🏥', '💊', '🩺', '🦷', '🧘', '🤒', '🩹', '💉', '🩻', '🫁'];
+        const expenseEduIcons = ['📚', '🎓', '✏️', '📝', '📖', '🖊️', '📐', '🎒', '🏫'];
+        const expenseCommIcons = ['📱', '📞', '📡', '📲', '💻', '🖥️', '⌨️', '🖱️'];
+        const expenseSocialIcons = ['🎎', '💝', '🌹', '🎁', '🎀', '💐', '🎗️', '🕊️'];
+        const expenseBabyIcons = ['👶', '🍼', '🧸', '🏫', '👧', '👦', '🤱', '🚼'];
+        const expenseCarIcons = ['🚗', '🔧', '🛡️', '🚿', '🔑', '🛞', '🪣', '⚠️'];
+        const expensePetIcons = ['🐾', '🐶', '🐱', '🐟', '🐰', '🐹', '🐦', '🦜'];
+        const expenseSportIcons = ['🏃', '🏋️', '⚽', '🏊', '🚴', '🧗', '🏸', '🏓', '🥊', '⛷️'];
+        const expenseBeautyIcons = ['💇', '💆', '💅', '🧖', '💈', '🪞', '🧴', '👄'];
+        const expenseInsureIcons = ['🛡️', '🏥', '📋', '🔒', '🤝', '📜'];
+
+        Widget iconGrid(List<String> icons) => Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: icons.map((e) => InkWell(
+            onTap: () => setLocal(() => selectedIcon = e),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: selectedIcon == e ? AppColors.primaryLight : AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selectedIcon == e ? AppColors.primary : AppColors.border,
+                  width: selectedIcon == e ? 2 : 1,
+                ),
+              ),
+              child: Center(child: Text(e, style: const TextStyle(fontSize: 17))),
+            ),
+          )).toList(),
+        );
+
+        Widget iconLabel(String text) => Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 2),
+          child: Text(text,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.text2)),
+        );
+
+        // 图标网格列表
+        final iconGrids = isExpense ? [
+          iconLabel('🍜 餐饮'), iconGrid(expenseFoodIcons),
+          iconLabel('🚌 交通'), iconGrid(expenseTransportIcons),
+          iconLabel('🛍️ 购物'), iconGrid(expenseShopIcons),
+          iconLabel('🏠 住房'), iconGrid(expenseHomeIcons),
+          iconLabel('🎮 娱乐'), iconGrid(expensePlayIcons),
+          iconLabel('🏥 医疗 · 🎓 教育 · 📱 通讯'), iconGrid([...expenseHealthIcons, ...expenseEduIcons, ...expenseCommIcons]),
+          iconLabel('👶 育儿 · 🐾 宠物 · 👔 人情'), iconGrid([...expenseBabyIcons, ...expensePetIcons, ...expenseSocialIcons]),
+          iconLabel('🏃 运动 · 💇 美容 · 🚗 汽车 · 🛡️ 保险'), iconGrid([...expenseSportIcons, ...expenseBeautyIcons, ...expenseCarIcons, ...expenseInsureIcons]),
+        ] : [
+          iconLabel('💰 收入'), iconGrid(incomeIcons),
+        ];
+
+        return AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
         title: Text(title, style: const TextStyle(fontSize: 16)),
-        content: SingleChildScrollView(
+        content: SizedBox(
+          width: 360,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1363,6 +1324,7 @@ Future<Category?> _promptNewCategory({
                         TextStyle(fontSize: 12, color: AppColors.text2),
                   ),
                 ),
+              // 名称 — 固定不动
               TextField(
                 controller: nameCtrl,
                 autofocus: true,
@@ -1376,48 +1338,30 @@ Future<Category?> _promptNewCategory({
                   if (errorMsg != null) setLocal(() => errorMsg = null);
                 },
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: iconCtrl,
-                maxLength: 4,
-                decoration: const InputDecoration(
-                  labelText: '图标（emoji，选填）',
-                  hintText: '比如：🛒',
-                  counterText: '',
+              const SizedBox(height: 10),
+              // 图标标签 + 当前选中的小预览
+              Row(children: [
+                Text('图标', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.text2)),
+                const SizedBox(width: 8),
+                Text(selectedIcon ?? '📂', style: const TextStyle(fontSize: 18)),
+                if (selectedIcon != null) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => setLocal(() => selectedIcon = null),
+                    child: Text('恢复默认', style: TextStyle(fontSize: 11, color: AppColors.primary)),
+                  ),
+                ],
+              ]),
+              const SizedBox(height: 4),
+              // 图标网格 — 独立滚动
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: iconGrids,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text('快速选择',
-                  style:
-                      TextStyle(fontSize: 12, color: AppColors.text2)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: suggested
-                    .map((e) => InkWell(
-                          onTap: () =>
-                              setLocal(() => iconCtrl.text = e),
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: iconCtrl.text == e
-                                  ? AppColors.primaryLight
-                                  : AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: iconCtrl.text == e
-                                    ? AppColors.primary
-                                    : AppColors.border,
-                              ),
-                            ),
-                            child: Center(
-                                child: Text(e,
-                                    style: const TextStyle(fontSize: 18))),
-                          ),
-                        ))
-                    .toList(),
               ),
               if (errorMsg != null) ...[
                 const SizedBox(height: 8),
@@ -1428,7 +1372,7 @@ Future<Category?> _promptNewCategory({
             ],
           ),
         ),
-        actions: [
+      actions: [
           TextButton(
             onPressed:
                 saving ? null : () => Navigator.pop(ctx, null),
@@ -1448,9 +1392,7 @@ Future<Category?> _promptNewCategory({
                       final res = await ApiService.createCategory(
                         name: name,
                         type: type,
-                        icon: iconCtrl.text.trim().isEmpty
-                            ? null
-                            : iconCtrl.text.trim(),
+                        icon: selectedIcon,
                         parentId: parentId,
                       );
                       final raw = res['category'] as Map<String, dynamic>?;
@@ -1480,9 +1422,10 @@ Future<Category?> _promptNewCategory({
                 : const Text('创建'),
           ),
         ],
-      ),
+      ); // AlertDialog + return
+    }, // builder block body
     ),
-  );
+  ); // showDialog
 }
 
 // ────────────────────────────────────────────────────────────
@@ -2172,12 +2115,13 @@ class _AccountPickerSheet extends StatelessWidget {
                 ],
               ),
             ),
-            Text('¥${a.balance.toStringAsFixed(2)}',
+            Text(fmtMoney(a.balance),
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.text1)),
             const SizedBox(width: 8),
+
             if (sel)
               Icon(Icons.check_circle_rounded,
                   size: 18, color: AppColors.primary),
@@ -2369,7 +2313,7 @@ class _TransferToPickerSheet extends StatelessWidget {
               ),
             ),
             if (a.balanceVisible)
-              Text('¥${a.balance.toStringAsFixed(2)}',
+              Text(fmtMoney(a.balance),
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

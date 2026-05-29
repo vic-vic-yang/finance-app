@@ -9,14 +9,17 @@ import '../models/bill.dart';
 import '../models/account.dart';
 import '../models/budget.dart';
 import '../models/ledger.dart';
+import '../models/insight.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import 'account_detail_screen.dart';
+import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
 import 'budgets_screen.dart';
 import 'ledgers_screen.dart';
+import 'recurring_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -53,6 +56,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// 家庭资产（含其他成员私人账户的总和）
   double _familyTotal = 0;
   double _othersTotal = 0;
+
+  /// AI 洞察 feed
+  List<AiInsight> _insights = [];
 
   @override
   void initState() {
@@ -92,6 +98,10 @@ class _HomeScreenState extends State<HomeScreen>
         ApiService.getStats(startDate: start, endDate: end),
         ApiService.getBudgets(),
         ApiService.getLedgers(),
+        // AI 洞察：实时算，失败不应影响首页其他数据
+        ApiService.aiInsights().catchError(
+          (_) => <String, dynamic>{'insights': []},
+        ),
       ]);
 
       if (!mounted) return;
@@ -112,6 +122,8 @@ class _HomeScreenState extends State<HomeScreen>
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
         _budgets = (results[3]['budgets'] as List? ?? [])
             .map((b) => Budget.fromJson(b as Map<String, dynamic>)).toList();
+        _insights = (results[5]['insights'] as List? ?? [])
+            .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _ledgers = ledgers;
         _currentLedger = ledgers.firstWhere(
           (l) => l.id == currentId,
@@ -148,6 +160,20 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
+              if (_insights.isNotEmpty) ...[
+                _sectionTitleWithAction(
+                  '🤖 AI 洞察',
+                  '订阅管家',
+                  () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RecurringScreen()),
+                    );
+                    if (mounted) _load();
+                  },
+                ),
+                SliverToBoxAdapter(child: _insightsList()),
+              ],
               if (_hasAnyBudget) ...[
                 _sectionTitleWithAction(
                   _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
@@ -218,6 +244,19 @@ class _HomeScreenState extends State<HomeScreen>
       pinned: true,
       titleSpacing: 20,
       toolbarHeight: 64,
+      actions: [
+        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
+          IconButton(
+            tooltip: '财记助手',
+            icon: const Text('🤖', style: TextStyle(fontSize: 22)),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(ledgerId: _currentLedger!.id),
+              ),
+            ),
+          ),
+      ],
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -310,6 +349,126 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ── AI 洞察列表 ──────────────────────────────────────────
+  Widget _insightsList() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Column(
+        children: [
+          for (final ins in _insights.take(4)) _insightCard(ins),
+          if (_insights.length > 4)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '还有 ${_insights.length - 4} 条…',
+                style: TextStyle(fontSize: 12, color: AppColors.text2),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _insightCard(AiInsight ins) {
+    Color borderColor;
+    Color bgColor;
+    switch (ins.severity) {
+      case 'critical':
+        borderColor = Colors.red.shade300;
+        bgColor = Colors.red.shade50;
+        break;
+      case 'warning':
+        borderColor = Colors.orange.shade300;
+        bgColor = Colors.orange.shade50;
+        break;
+      default:
+        borderColor = Colors.blue.shade200;
+        bgColor = Colors.blue.shade50;
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 0.6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ins.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (ins.body.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    ins.body,
+                    style: TextStyle(fontSize: 12.5, color: AppColors.text2),
+                  ),
+                ],
+                if (ins.actions.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final a in ins.actions)
+                        TextButton(
+                          onPressed: () => _handleInsightAction(ins, a),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 2,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(a.label),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '忽略',
+            icon: Icon(Icons.close, size: 18, color: AppColors.text2),
+            onPressed: () => _dismissInsight(ins),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _dismissInsight(AiInsight ins) async {
+    setState(() => _insights.remove(ins));
+    try {
+      await ApiService.aiDismissInsight(type: ins.type, target: ins.target);
+    } catch (_) {
+      // 失败也不还原，下次刷新会再出
+    }
+  }
+
+  Future<void> _handleInsightAction(AiInsight ins, InsightAction a) async {
+    if (a.intent == 'createBillFromRecurring' ||
+        ins.type == 'recurring_due') {
+      // 跳到周期账单页让用户处理
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const RecurringScreen()),
+      );
+      if (mounted) _load();
+    }
+  }
+
   Widget _summaryCard() {
     final now     = DateTime.now();
     final balance = _income - _expense;
@@ -331,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen>
           Text('${now.year}年${now.month}月结余',
               style: TextStyle(color: fg.withOpacity(0.7), fontSize: 13)),
           const SizedBox(height: 6),
-          Text('¥${balance.toStringAsFixed(2)}',
+          Text(fmtMoney(balance),
               style: TextStyle(
                   color: fg, fontSize: 34,
                   fontWeight: FontWeight.bold, letterSpacing: -1)),
@@ -355,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Text(label, style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
           const SizedBox(height: 4),
-          Text('¥${amt.toStringAsFixed(2)}',
+          Text(fmtMoney(amt),
               style: TextStyle(
                   color: fg, fontSize: 16, fontWeight: FontWeight.w600)),
         ],
@@ -404,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen>
             Text(showTabs ? _assetLabel() : '总资产  ',
                 style: TextStyle(color: AppColors.text2, fontSize: 13)),
             const SizedBox(width: 4),
-            Text('¥${headerTotal.toStringAsFixed(2)}',
+            Text(fmtMoney(headerTotal),
                 style: TextStyle(
                     color: AppColors.text1,
                     fontSize: 13,
@@ -683,20 +842,20 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 8),
                 Row(children: [
                   Text(
-                    '已用 ¥${spent.toStringAsFixed(0)}',
+                    '已用 ${fmtMoneyInt(spent)}',
                     style: TextStyle(
                         fontSize: 12,
                         color: color,
                         fontWeight: FontWeight.w600),
                   ),
-                  Text(' / ¥${total.toStringAsFixed(0)}',
+                  Text(' / ${fmtMoneyInt(total)}',
                       style: TextStyle(
                           fontSize: 12, color: AppColors.text3)),
                   const Spacer(),
                   Text(
                     over
-                        ? '超支 ¥${(-remaining).toStringAsFixed(0)}'
-                        : '剩 ¥${remaining.toStringAsFixed(0)}',
+                        ? '超支 ${fmtMoneyInt(-remaining)}'
+                        : '剩 ${fmtMoneyInt(remaining)}',
                     style: TextStyle(
                       fontSize: 12,
                       color: over
@@ -757,7 +916,7 @@ class _AccountCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis),
                   ),
                 ]),
-                Text('¥${account.balance.toStringAsFixed(2)}',
+                Text(fmtMoney(account.balance),
                     style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
@@ -799,7 +958,7 @@ class _OthersAccountCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis),
               ),
             ]),
-            Text('¥${total.toStringAsFixed(2)}',
+            Text(fmtMoney(total),
                 style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,

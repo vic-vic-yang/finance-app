@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../models/budget.dart';
 import '../models/category.dart';
 import '../services/api_service.dart';
+import '../models/bill.dart';
 
 /// 预算页面 —— 重新设计：
 /// - 只按 *分类* 设预算，"总预算" = 所有分类预算之和（自动算）
@@ -347,7 +348,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                       color: AppColors.onPrimaryGradient, fontSize: 18)),
               const SizedBox(width: 2),
               Text(
-                _totalBudget.toStringAsFixed(0),
+                fmtMoneyInt(_totalBudget),
                 style: TextStyle(
                     color: AppColors.onPrimaryGradient,
                     fontSize: 30,
@@ -371,7 +372,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
           const SizedBox(height: 10),
           Row(children: [
             Text(
-              '已用 ¥${_totalSpent.toStringAsFixed(2)}',
+              '已用 ${fmtMoney(_totalSpent)}',
               style: TextStyle(
                   color: AppColors.onPrimaryGradient,
                   fontSize: 13,
@@ -380,8 +381,8 @@ class _BudgetsScreenState extends State<BudgetsScreen>
             const Spacer(),
             Text(
               _isOverBudget
-                  ? '超支 ¥${(-_totalRemaining).toStringAsFixed(2)}'
-                  : '剩余 ¥${_totalRemaining.toStringAsFixed(2)}',
+                  ? '超支 ${fmtMoney(-_totalRemaining)}'
+                  : '剩余 ${fmtMoney(_totalRemaining)}',
               style: TextStyle(
                   color: _isOverBudget
                       ? AppColors.expense
@@ -393,9 +394,9 @@ class _BudgetsScreenState extends State<BudgetsScreen>
           const SizedBox(height: 4),
           Text(
             _totalAutoBumped
-                ? '手填 ¥${_manualTotalTarget.toStringAsFixed(0)} 小于分类合计 ¥${_sumCategoryBudgets.toStringAsFixed(0)}，已自动调高'
+                ? '手填 ${fmtMoneyInt(_manualTotalTarget)} 小于分类合计 ${fmtMoneyInt(_sumCategoryBudgets)}，已自动调高'
                 : (hasManual
-                    ? '手填总预算 · 分类合计 ¥${_sumCategoryBudgets.toStringAsFixed(0)}'
+                    ? '手填总预算 · 分类合计 ${fmtMoneyInt(_sumCategoryBudgets)}'
                     : '总预算 = 各分类预算之和（点 ✎ 可手填）'),
             style: TextStyle(
                 color: AppColors.onPrimaryGradient.withOpacity(0.6),
@@ -504,12 +505,12 @@ class _BudgetsScreenState extends State<BudgetsScreen>
   String? _helperForTotalEdit(Budget? cur, double sum) {
     if (cur == null) {
       if (sum > 0) {
-        return '已自动填入分类合计 ¥${sum.toStringAsFixed(0)}，可在此基础上加缓冲';
+        return '已自动填入分类合计 ${fmtMoneyInt(sum)}，可在此基础上加缓冲';
       }
       return null;
     }
     if (sum > cur.amount) {
-      return '原手填 ¥${cur.amount.toStringAsFixed(0)} 已被分类合计 ¥${sum.toStringAsFixed(0)} 顶起';
+      return '原手填 ${fmtMoneyInt(cur.amount)} 已被分类合计 ${fmtMoneyInt(sum)} 顶起';
     }
     return null;
   }
@@ -535,7 +536,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '当前分类预算合计 ¥${sum.toStringAsFixed(0)}。\n'
+              '当前分类预算合计 ${fmtMoneyInt(sum)}。\n'
               '总预算 ≥ 分类合计；如果你填得更小，会被分类合计自动顶起来。',
               style: TextStyle(
                   fontSize: 12,
@@ -769,7 +770,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                       final isBudget = t.barIndex == 0;
                       final p = _history[i];
                       return LineTooltipItem(
-                        '${p.label}\n${isBudget ? "预算" : "实际"} ¥${t.y.toStringAsFixed(0)}',
+                        '${p.label}\n${isBudget ? "预算" : "实际"} ${fmtMoneyInt(t.y)}',
                         TextStyle(
                           color: Colors.white,
                           fontSize: 11,
@@ -878,7 +879,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                     children: [
                       Row(children: [
                         Text(
-                          '¥${p.totalSpent.toStringAsFixed(0)}',
+                          fmtMoneyInt(p.totalSpent),
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -886,7 +887,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                                   ? AppColors.expense
                                   : AppColors.text1),
                         ),
-                        Text(' / ¥${p.totalBudget.toStringAsFixed(0)}',
+                        Text(' / ${fmtMoneyInt(p.totalBudget)}',
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.text3)),
                       ]),
@@ -914,8 +915,8 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                     p.totalBudget == 0
                         ? '—'
                         : (over
-                            ? '超 ¥${(-diff).toStringAsFixed(0)}'
-                            : '余 ¥${diff.toStringAsFixed(0)}'),
+                            ? '超 ${fmtMoneyInt(-diff)}'
+                            : '余 ${fmtMoneyInt(diff)}'),
                     textAlign: TextAlign.right,
                     style: TextStyle(
                         fontSize: 12,
@@ -1018,7 +1019,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                                 color: AppColors.text1,
                                 fontWeight: FontWeight.w500)),
                         Text(
-                          '${e.value.times} 期超支 · 累计超 ¥${e.value.totalOver.toStringAsFixed(0)}',
+                          '${e.value.times} 期超支 · 累计超 ${fmtMoneyInt(e.value.totalOver)}',
                           style: TextStyle(
                               fontSize: 11, color: AppColors.text2),
                         ),
@@ -1102,7 +1103,7 @@ class _BudgetCard extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: AppColors.text1)),
                   const SizedBox(height: 1),
-                  Text('预算 ¥${budget.amount.toStringAsFixed(0)}',
+                  Text('预算 ${fmtMoneyInt(budget.amount)}',
                       style: TextStyle(
                           fontSize: 11, color: AppColors.text3)),
                 ],
@@ -1158,7 +1159,7 @@ class _BudgetCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Row(children: [
-            Text('已用 ¥${budget.spent.toStringAsFixed(2)}',
+            Text('已用 ${fmtMoney(budget.spent)}',
                 style: TextStyle(
                     fontSize: 11,
                     color: color,
@@ -1166,8 +1167,8 @@ class _BudgetCard extends StatelessWidget {
             const Spacer(),
             Text(
               budget.isOverBudget
-                  ? '超 ¥${(-budget.remaining).toStringAsFixed(2)}'
-                  : '剩 ¥${budget.remaining.toStringAsFixed(2)}',
+                  ? '超 ${fmtMoney(-budget.remaining)}'
+                  : '剩 ${fmtMoney(budget.remaining)}',
               style: TextStyle(
                   fontSize: 11,
                   color: budget.isOverBudget

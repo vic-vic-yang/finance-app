@@ -7,8 +7,6 @@ import '../models/bill.dart';
 import '../services/api_service.dart';
 import 'add_bill_screen.dart';
 
-/// 账户详情页：根据账户类型展示不同的 hero / 统计区，
-/// 下面再统一展示该账户的所有账单（按日期分组、支持分页）。
 class AccountDetailScreen extends StatefulWidget {
   const AccountDetailScreen({super.key, required this.accountId});
 
@@ -31,6 +29,53 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
   double _totalIncome = 0;
   double _totalExpense = 0;
+
+  _DateMode _dateMode = _DateMode.all;
+  DateTime _dateAnchor = DateTime.now();
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
+
+  String? get _startDate {
+    if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.range) {
+      if (_rangeStart == null) return null;
+      return DateFormat('yyyy-MM-dd').format(_rangeStart!);
+    }
+    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-01-01';
+    final m = _dateAnchor.month.toString().padLeft(2, '0');
+    return '${_dateAnchor.year}-$m-01';
+  }
+
+  String? get _endDate {
+    if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.range) {
+      if (_rangeEnd == null) return null;
+      return DateFormat('yyyy-MM-dd').format(_rangeEnd!);
+    }
+    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-12-31';
+    final last = DateTime(_dateAnchor.year, _dateAnchor.month + 1, 0).day;
+    final m = _dateAnchor.month.toString().padLeft(2, '0');
+    return '${_dateAnchor.year}-$m-${last.toString().padLeft(2, '0')}';
+  }
+
+  String get _dateLabel {
+    switch (_dateMode) {
+      case _DateMode.all:
+        return '全部时间';
+      case _DateMode.range:
+        if (_rangeStart != null && _rangeEnd != null) {
+          return '${DateFormat('M/d').format(_rangeStart!)} ~ ${DateFormat('M/d').format(_rangeEnd!)}';
+        }
+        return '选择范围';
+      case _DateMode.year:
+        return '${_dateAnchor.year}年';
+      case _DateMode.month:
+        return '${_dateAnchor.year}年${_dateAnchor.month}月';
+    }
+  }
+
+  final _moneyFmt = NumberFormat('#,##0.00');
+  final _moneyFmtInt = NumberFormat('#,##0');
 
   @override
   void initState() {
@@ -63,7 +108,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
   Future<void> _loadAccount() async {
     try {
-      // 复用列表接口找出当前账户（带 info）；后端没有单账户 GET
       final res = await ApiService.getAccounts(scope: 'all');
       if (!mounted) return;
       final list = (res['accounts'] as List? ?? [])
@@ -98,6 +142,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         page: 1,
         limit: 20,
         accountId: widget.accountId,
+        startDate: _startDate,
+        endDate: _endDate,
       );
       if (!mounted) return;
       setState(() {
@@ -124,6 +170,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         page: _page,
         limit: 20,
         accountId: widget.accountId,
+        startDate: _startDate,
+        endDate: _endDate,
       );
       if (!mounted) return;
       final more = (res['bills'] as List? ?? [])
@@ -144,11 +192,9 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('确认删除'),
-        content: Text(
-            '删除「${bill.category.name}」¥${bill.amount.toStringAsFixed(2)}？'),
+        content: Text('删除「${bill.category.name}」${bill.amountText}？'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -175,15 +221,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         );
       }
     }
-  }
-
-  Map<String, List<Bill>> get _grouped {
-    final map = <String, List<Bill>>{};
-    for (final b in _bills) {
-      final key = DateFormat('yyyy-MM-dd').format(b.date);
-      map.putIfAbsent(key, () => []).add(b);
-    }
-    return map;
   }
 
   @override
@@ -229,16 +266,12 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         child: CustomScrollView(
           controller: _scroll,
           slivers: [
-            // ── Hero header ──────────────────────────────
             SliverToBoxAdapter(child: _heroHeader(a)),
-            // ── 类型相关详情卡 ────────────────────────────
             SliverToBoxAdapter(child: _typeSpecificCard(a)),
-            // ── 账户内汇总（收入/支出） ───────────────────
             if (a.balanceVisible) SliverToBoxAdapter(child: _summary()),
-            // ── 账单列表 header ──────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
                 child: Row(children: [
                   Text('账单明细',
                       style: TextStyle(
@@ -249,10 +282,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   Text('共 ${_bills.length} 条',
                       style: TextStyle(
                           fontSize: 11, color: AppColors.text3)),
+                  const Spacer(),
+                  _dateFilterButton(),
                 ]),
               ),
             ),
-            // ── 账单列表 ──────────────────────────────────
             if (_loadingBills)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -275,9 +309,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 
-  // ── Hero header（顶部大卡） ────────────────────────────────
   Widget _heroHeader(Account a) {
-    // 信用卡 / 负债：用"欠款"标签；正向账户用"当前余额"
     String label;
     double value;
     Color valueColor;
@@ -371,7 +403,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             const SizedBox(height: 4),
             Text(
               a.balanceVisible
-                  ? '¥${value.toStringAsFixed(2)}'
+                  ? '¥${_moneyFmt.format(value)}'
                   : '****',
               style: TextStyle(
                   color: valueColor,
@@ -379,12 +411,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   fontWeight: FontWeight.bold,
                   letterSpacing: -1),
             ),
-            // 信用卡显示额度进度
             if (a.isCredit && (a.creditLimit ?? 0) > 0) ...[
               const SizedBox(height: 12),
               _creditUsageBar(a),
             ],
-            // 负债显示还款进度
             if (a.isDebt && (a.info?.totalPeriods ?? 0) > 0) ...[
               const SizedBox(height: 12),
               _debtProgressBar(a),
@@ -409,7 +439,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   TextStyle(color: fg.withOpacity(0.7), fontSize: 11)),
           const Spacer(),
           Text(
-              '¥${used.toStringAsFixed(0)} / ¥${limit.toStringAsFixed(0)}',
+              '¥${_moneyFmtInt.format(used)} / ¥${_moneyFmtInt.format(limit)}',
               style: TextStyle(
                   color: fg,
                   fontSize: 11,
@@ -477,7 +507,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 
-  // ── 类型相关详情卡 ────────────────────────────────────────
   Widget _typeSpecificCard(Account a) {
     switch (a.type) {
       case 'CREDIT':
@@ -562,16 +591,15 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           _kvRow('账期',
               '${fmt.format(i!.periodStart!)} ~ ${fmt.format(i.periodEnd!)}'),
         if (i?.periodBill != null)
-          _kvRow('本期账单', '¥${i!.periodBill!.toStringAsFixed(2)}',
-              bold: true),
+          _kvRow('本期账单', '¥${_moneyFmt.format(i!.periodBill!)}', bold: true),
         if ((i?.paid ?? 0) > 0)
-          _kvRow('已还', '¥${i!.paid!.toStringAsFixed(2)}',
+          _kvRow('已还', '¥${_moneyFmt.format(i!.paid!)}',
               valueColor: AppColors.income),
         if ((i?.unpaid ?? 0) > 0)
-          _kvRow('未还', '¥${i!.unpaid!.toStringAsFixed(2)}',
+          _kvRow('未还', '¥${_moneyFmt.format(i!.unpaid!)}',
               valueColor: AppColors.expense, bold: true),
         if ((i?.ongoingSpent ?? 0) > 0)
-          _kvRow('下期未出账', '¥${i!.ongoingSpent!.toStringAsFixed(2)}',
+          _kvRow('下期未出账', '¥${_moneyFmt.format(i!.ongoingSpent!)}',
               valueColor: AppColors.text2),
         const Divider(height: 18),
         if (a.statementDay != null)
@@ -593,7 +621,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             bold: i.isOverdue || i.isDueToday,
           ),
         if (a.creditLimit != null)
-          _kvRow('信用额度', '¥${a.creditLimit!.toStringAsFixed(0)}'),
+          _kvRow('信用额度', '¥${_moneyFmtInt.format(a.creditLimit!)}'),
       ],
     );
   }
@@ -606,7 +634,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       emoji: '🏚️',
       children: [
         if (a.loanPrincipal != null)
-          _kvRow('贷款本金', '¥${a.loanPrincipal!.toStringAsFixed(0)}'),
+          _kvRow('贷款本金', '¥${_moneyFmtInt.format(a.loanPrincipal!)}'),
         if (a.loanTermMonths != null)
           _kvRow('贷款期限',
               '${a.loanTermMonths} 个月 (${(a.loanTermMonths! / 12).toStringAsFixed(0)} 年)'),
@@ -619,11 +647,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         if (a.dueDay != null) _kvRow('每月还款日', '每月 ${a.dueDay} 号'),
         const Divider(height: 18),
         if ((i?.monthlyPayment ?? 0) > 0)
-          _kvRow('月供', '¥${i!.monthlyPayment!.toStringAsFixed(2)}',
+          _kvRow('月供', '¥${_moneyFmt.format(i!.monthlyPayment!)}',
               valueColor: AppColors.primary, bold: true),
         if ((i?.monthlyInterest ?? 0) > 0)
           _kvRow('当期月息估算',
-              '¥${i!.monthlyInterest!.toStringAsFixed(0)}',
+              '¥${_moneyFmtInt.format(i!.monthlyInterest!)}',
               valueColor: AppColors.text2),
         if (i?.dueDate != null)
           _kvRow(
@@ -652,7 +680,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         if (a.autoDepositDay != null && a.autoDepositAmount != null) ...[
           _kvRow('每月入账日', '每月 ${a.autoDepositDay} 号'),
           _kvRow('入账金额',
-              '¥${a.autoDepositAmount!.toStringAsFixed(2)}',
+              '¥${_moneyFmt.format(a.autoDepositAmount!)}',
               valueColor: AppColors.income, bold: true),
           if (i?.lastDepositDate != null)
             _kvRow('上次入账', fmt.format(i!.lastDepositDate!)),
@@ -676,11 +704,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       title: '投资账户',
       emoji: '📈',
       children: [
-        _kvRow('账户余额', '¥${a.balance.toStringAsFixed(2)}',
-            bold: true),
+        _kvRow('账户余额', '¥${_moneyFmt.format(a.balance)}', bold: true),
         const SizedBox(height: 2),
         Text(
-          '建议在每次买入/卖出 / 收到分红时记一笔，方便追溯收益。',
+          '建议在每次买入/卖出/收到分红时记一笔，方便追溯收益。',
           style: TextStyle(
               fontSize: 11, color: AppColors.text3, height: 1.4),
         ),
@@ -688,7 +715,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 
-  // ── 汇总：累计收入/支出 ────────────────────────────────────
   Widget _summary() {
     final net = _totalIncome - _totalExpense;
     return Padding(
@@ -702,21 +728,19 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         ),
         child: Row(children: [
           Expanded(
-            child: _stat('收入', '+¥${_totalIncome.toStringAsFixed(2)}',
+            child: _stat('收入', '+¥${_moneyFmt.format(_totalIncome)}',
                 AppColors.income),
           ),
-          Container(
-              width: 1, height: 32, color: AppColors.border),
+          Container(width: 1, height: 32, color: AppColors.border),
           Expanded(
-            child: _stat('支出', '-¥${_totalExpense.toStringAsFixed(2)}',
+            child: _stat('支出', '-¥${_moneyFmt.format(_totalExpense)}',
                 AppColors.expense),
           ),
-          Container(
-              width: 1, height: 32, color: AppColors.border),
+          Container(width: 1, height: 32, color: AppColors.border),
           Expanded(
             child: _stat(
                 '净额',
-                '${net >= 0 ? '+' : '-'}¥${net.abs().toStringAsFixed(2)}',
+                '${net >= 0 ? '+' : '-'}¥${_moneyFmt.format(net.abs())}',
                 net >= 0 ? AppColors.income : AppColors.expense),
           ),
         ]),
@@ -739,85 +763,307 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         ],
       );
 
-  // ── 账单 sliver（按日分组） ────────────────────────────────
+  Widget _dateFilterButton() {
+    final isAll = _dateMode == _DateMode.all;
+    return InkWell(
+      onTap: _openDateSheet,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isAll ? AppColors.surface : AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: isAll ? AppColors.border : AppColors.primary),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.calendar_today_rounded,
+              size: 12,
+              color: isAll ? AppColors.text2 : AppColors.primary),
+          const SizedBox(width: 4),
+          Text(_dateLabel,
+              style: TextStyle(
+                fontSize: 12,
+                color: isAll ? AppColors.text2 : AppColors.primary,
+                fontWeight: isAll ? FontWeight.normal : FontWeight.w600,
+              )),
+          if (_dateMode == _DateMode.range) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _dateMode = _DateMode.all;
+                  _rangeStart = null;
+                  _rangeEnd = null;
+                });
+                _loadBills(refresh: true);
+              },
+              child: Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
+            ),
+          ] else if (!isAll) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (_dateMode == _DateMode.month) {
+                    _dateAnchor = DateTime(_dateAnchor.year, _dateAnchor.month - 1);
+                  } else {
+                    _dateAnchor = DateTime(_dateAnchor.year - 1, 1);
+                  }
+                });
+                _loadBills(refresh: true);
+              },
+              child: Icon(Icons.chevron_left_rounded,
+                  size: 16, color: AppColors.primary),
+            ),
+            GestureDetector(
+              onTap: _canGoNextDate
+                  ? () {
+                      setState(() {
+                        if (_dateMode == _DateMode.month) {
+                          _dateAnchor = DateTime(_dateAnchor.year, _dateAnchor.month + 1);
+                        } else {
+                          _dateAnchor = DateTime(_dateAnchor.year + 1, 1);
+                        }
+                      });
+                      _loadBills(refresh: true);
+                    }
+                  : null,
+              child: Icon(Icons.chevron_right_rounded,
+                  size: 16,
+                  color: _canGoNextDate ? AppColors.primary : AppColors.text3),
+            ),
+          ] else
+            Icon(Icons.arrow_drop_down_rounded,
+                size: 14, color: AppColors.text2),
+        ]),
+      ),
+    );
+  }
+
+  bool get _canGoNextDate {
+    final now = DateTime.now();
+    if (_dateMode == _DateMode.year) return _dateAnchor.year < now.year;
+    if (_dateMode == _DateMode.month) {
+      return _dateAnchor.isBefore(DateTime(now.year, now.month));
+    }
+    return false;
+  }
+
+  void _openDateSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        final now = DateTime.now();
+        Widget tile(String label, _DateMode mode, DateTime anchor) {
+          final selected = _dateMode == mode &&
+              _dateAnchor.year == anchor.year &&
+              (mode != _DateMode.month || _dateAnchor.month == anchor.month);
+          return ListTile(
+            onTap: () {
+              Navigator.pop(context);
+              setState(() {
+                _dateMode = mode;
+                _dateAnchor = anchor;
+                _rangeStart = null;
+                _rangeEnd = null;
+              });
+              _loadBills(refresh: true);
+            },
+            title: Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                    color: selected ? AppColors.primary : AppColors.text1)),
+            trailing: selected
+                ? Icon(Icons.check_rounded, color: AppColors.primary, size: 18)
+                : null,
+            visualDensity: const VisualDensity(vertical: -2),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 4),
+                child: Row(children: [
+                  Text('选择时间',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text1)),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close_rounded, color: AppColors.text2),
+                  ),
+                ]),
+              ),
+              tile('全部时间', _DateMode.all, _dateAnchor),
+              Divider(height: 1, color: AppColors.border),
+              tile('本月', _DateMode.month, DateTime(now.year, now.month)),
+              tile('上月', _DateMode.month, DateTime(now.year, now.month - 1)),
+              tile('本年', _DateMode.year, DateTime(now.year)),
+              tile('上年', _DateMode.year, DateTime(now.year - 1)),
+              Divider(height: 1, color: AppColors.border),
+              ListTile(
+                title: Text('选择月份…',
+                    style: TextStyle(fontSize: 14, color: AppColors.text1)),
+                trailing: Icon(Icons.chevron_right_rounded, color: AppColors.text2),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _dateAnchor,
+                    firstDate: DateTime(2010),
+                    lastDate: DateTime.now(),
+                    helpText: '选择月份',
+                  );
+                  if (picked != null && mounted) {
+                    setState(() {
+                      _dateMode = _DateMode.month;
+                      _dateAnchor = DateTime(picked.year, picked.month);
+                      _rangeStart = null;
+                      _rangeEnd = null;
+                    });
+                    _loadBills(refresh: true);
+                  }
+                },
+              ),
+              ListTile(
+                title: Text('自定义范围…',
+                    style: TextStyle(fontSize: 14, color: AppColors.text1)),
+                trailing: Icon(Icons.date_range_rounded, color: AppColors.text2, size: 20),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final now = DateTime.now();
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2010),
+                    lastDate: now,
+                    initialDateRange: _rangeStart != null && _rangeEnd != null
+                        ? DateTimeRange(start: _rangeStart!, end: _rangeEnd!)
+                        : DateTimeRange(
+                            start: now.subtract(const Duration(days: 30)),
+                            end: now),
+                    helpText: '选择日期范围',
+                    confirmText: '确定',
+                    cancelText: '取消',
+                    fieldStartHintText: '开始日期',
+                    fieldEndHintText: '结束日期',
+                  );
+                  if (picked != null && mounted) {
+                    setState(() {
+                      _dateMode = _DateMode.range;
+                      _rangeStart = picked.start;
+                      _rangeEnd = picked.end;
+                    });
+                    _loadBills(refresh: true);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _billsSliver() {
-    final groups = _grouped;
-    final dates = groups.keys.toList();
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (_, i) {
-          if (i == dates.length) {
-            if (_loadingMore) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.primary)),
-              );
-            }
-            return const SizedBox(height: 8);
-          }
-          final date = dates[i];
-          final items = groups[date]!;
-          final dayIncome =
-              items.where((b) => b.isIncome).fold(0.0, (s, b) => s + b.amount);
-          final dayExpense = items
-              .where((b) => !b.isIncome)
-              .fold(0.0, (s, b) => s + b.amount);
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                Row(children: [
-                  Text(_formatDate(date),
+    final dayGroups = <String, List<Bill>>{};
+    for (final b in _bills) {
+      final dayKey = DateFormat('yyyy-MM-dd').format(b.date);
+      dayGroups.putIfAbsent(dayKey, () => []).add(b);
+    }
+    final dayKeys = dayGroups.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final flatItems = <Widget>[];
+    for (final dayKey in dayKeys) {
+      final items = dayGroups[dayKey]!;
+      final dayIncome = items
+          .where((b) => b.isIncome)
+          .fold(0.0, (s, b) => s + b.amount);
+      final dayExpense = items
+          .where((b) => !b.isIncome)
+          .fold(0.0, (s, b) => s + b.amount);
+
+      flatItems.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Row(children: [
+                  Text(_formatDate(dayKey),
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppColors.text2)),
                   const Spacer(),
                   if (dayIncome > 0)
-                    Text('+¥${dayIncome.toStringAsFixed(2)} ',
+                    Text('+¥${_moneyFmt.format(dayIncome)} ',
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.income)),
                   if (dayExpense > 0)
-                    Text('-¥${dayExpense.toStringAsFixed(2)}',
+                    Text('-¥${_moneyFmt.format(dayExpense)}',
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.expense)),
                 ]),
-                const SizedBox(height: 6),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: items.asMap().entries.map((e) {
-                      final isLast = e.key == items.length - 1;
-                      return _BillRow(
-                        bill: e.value,
-                        showDivider: !isLast,
-                        onTap: () async {
-                          final ok = await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AddBillScreen(bill: e.value),
-                            ),
-                          );
-                          if (ok == true) _onBump();
-                        },
-                        onDelete: () => _deleteBill(e.value),
-                      );
-                    }).toList(),
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
                 ),
-              ],
-            ),
-          );
-        },
-        childCount: dates.length + 1,
+                child: Column(
+                  children: items.map((bill) {
+                    final isLast = items.last == bill;
+                    return _BillRow(
+                      bill: bill,
+                      showDivider: !isLast,
+                      onTap: () async {
+                        final ok = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AddBillScreen(bill: bill),
+                          ),
+                        );
+                        if (ok == true) _onBump();
+                      },
+                      onDelete: () => _deleteBill(bill),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_loadingMore) {
+      flatItems.add(const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      ));
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (_, i) => flatItems[i],
+        childCount: flatItems.length,
       ),
     );
   }
@@ -830,7 +1076,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final d = DateTime(date.year, date.month, date.day);
     if (d == today) return '今天';
     if (d == yesterday) return '昨天';
-    return DateFormat('M月d日 EEEE', 'zh').format(date);
+    if (date.year == now.year) {
+      return DateFormat('M月d日 EEEE', 'zh').format(date);
+    }
+    return DateFormat('yyyy年M月d日 EEEE', 'zh').format(date);
   }
 
   Widget _emptyBills() => Center(
@@ -852,7 +1101,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       );
 }
 
-// ── 简化版账单行（详情页内不重复显示账户名） ─────────────────
 class _BillRow extends StatelessWidget {
   const _BillRow({
     required this.bill,
@@ -965,3 +1213,5 @@ class _BillRow extends StatelessWidget {
     );
   }
 }
+
+enum _DateMode { all, month, year, range }

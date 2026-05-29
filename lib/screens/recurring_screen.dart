@@ -1,0 +1,637 @@
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../crypto/key_chain.dart';
+import '../models/recurring.dart';
+import '../models/account.dart';
+import '../models/category.dart';
+
+/// 周期账单 / 订阅管家
+///
+/// 两 tab：
+///   - "已订阅"：当前账本里已确认的周期账单（手动加或 AI 候选确认的）
+///   - "AI 候选"：AI 从历史账单聚类出的疑似周期消费
+///
+/// 所有 note 在客户端用账本 DEK 解密展示；新建/编辑时也在客户端加密。
+class RecurringScreen extends StatefulWidget {
+  const RecurringScreen({super.key});
+
+  @override
+  State<RecurringScreen> createState() => _RecurringScreenState();
+}
+
+class _RecurringScreenState extends State<RecurringScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tab;
+  bool _loading = true;
+  List<RecurringBill> _list = [];
+  List<RecurringCandidate> _candidates = [];
+  // 分类/账户索引（用于显示名字 / icon）
+  Map<String, Category> _catById = {};
+  Map<String, Account> _accById = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 2, vsync: this);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final futures = await Future.wait([
+        ApiService.recurringList(),
+        ApiService.recurringCandidates(),
+        ApiService.getCategories(),
+        ApiService.getAccounts(),
+      ]);
+      final list = (futures[0]['recurring'] as List? ?? [])
+          .map((j) => RecurringBill.fromJson(j as Map<String, dynamic>))
+          .toList();
+      final cands = (futures[1]['candidates'] as List? ?? [])
+          .map((j) => RecurringCandidate.fromJson(j as Map<String, dynamic>))
+          .toList();
+      final cats = (futures[2]['categories'] as List? ?? [])
+          .map((j) => Category.fromJson(j as Map<String, dynamic>))
+          .toList();
+      final accs = (futures[3]['accounts'] as List? ?? [])
+          .map((j) => Account.fromJson(j as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _list = list;
+        _candidates = cands;
+        _catById = {for (final c in cats) c.id: c};
+        _accById = {for (final a in accs) a.id: a};
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _toast('加载失败：$e');
+    }
+  }
+
+  void _toast(String s) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s)));
+  }
+
+  // ── 候选 → 确认入库 ────────────────────────────────────────
+  Future<void> _confirmCandidate(RecurringCandidate c) async {
+    final acc = _accById[c.accountId];
+    if (acc == null) return _toast('账户不存在');
+    try {
+      // 候选没有 note 明文；先存空字符串密文（用户后续可编辑）
+      final cipher = KeyChain.instance.encryptText(
+        ledgerId: acc.ledgerId,
+        plain: '',
+      );
+      final dekVer = KeyChain.instance.dekVersionOf(acc.ledgerId) ?? 1;
+      await ApiService.createRecurring({
+        'categoryId': c.categoryId,
+        'accountId': c.accountId,
+        'type': c.type,
+        'amount': c.amount,
+        'noteCipher': cipher,
+        'noteDekVer': dekVer,
+        'cycleType': c.cycleType,
+        'cycleDay': c.cycleDay,
+        'isAuto': true,
+        'confidence': c.confidence,
+      });
+      if (!mounted) return;
+      _toast('已加入周期账单');
+      _load();
+    } catch (e) {
+      _toast('保存失败：$e');
+    }
+  }
+
+  Future<void> _delete(RecurringBill r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('删除周期账单?'),
+        content: const Text('此操作不会删除历史账单，只会停止追踪。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ApiService.deleteRecurring(r.id);
+      if (!mounted) return;
+      _toast('已删除');
+      _load();
+    } catch (e) {
+      _toast('删除失败：$e');
+    }
+  }
+
+  Future<void> _openEditSheet({RecurringBill? init}) async {
+    final cats = _catById.values
+        .where((c) => c.type == 'expense')
+        .toList()
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+    final accs = _accById.values.toList();
+    if (cats.isEmpty || accs.isEmpty) return _toast('请先创建分类和账户');
+
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _RecurringEditSheet(
+        init: init,
+        categories: cats,
+        accounts: accs,
+      ),
+    );
+    if (changed == true) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('周期账单'),
+        bottom: TabBar(
+          controller: _tab,
+          tabs: [
+            Tab(text: '已订阅 (${_list.length})'),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('AI 候选'),
+                  if (_candidates.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.deepOrange,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${_candidates.length}',
+                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tab,
+              children: [_buildList(), _buildCandidates()],
+            ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openEditSheet(),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  // ── 已订阅列表 ─────────────────────────────────────────────
+  Widget _buildList() {
+    if (_list.isEmpty) {
+      return _empty('还没有周期账单\n切到 "AI 候选" 看看 AI 能不能从你的历史账单里找一些', icon: '📋');
+    }
+    final totalMonthly = _list.fold<double>(
+      0,
+      (sum, r) => sum + (r.cycleType == 'monthly' ? r.amount : 0),
+    );
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          if (totalMonthly > 0)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const Text('💰 ', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('每月固定支出', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                          const SizedBox(height: 2),
+                          Text('¥${totalMonthly.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          for (final r in _list) _itemTile(r),
+        ],
+      ),
+    );
+  }
+
+  Widget _itemTile(RecurringBill r) {
+    final cat = _catById[r.categoryId];
+    final acc = _accById[r.accountId];
+    final note = (r.noteCipher == null || r.noteDekVer == null)
+        ? ''
+        : KeyChain.instance.decryptText(
+            ledgerId: r.ledgerId,
+            cipherBase64: r.noteCipher!,
+            dekVer: r.noteDekVer!,
+            systemFallback: '',
+          );
+
+    final days = r.nextDate.difference(DateTime.now()).inDays;
+    String nextLabel;
+    Color nextColor = Colors.grey.shade600;
+    if (days <= 0) {
+      nextLabel = '今天到期';
+      nextColor = Colors.red;
+    } else if (days <= 3) {
+      nextLabel = '$days 天后';
+      nextColor = Colors.orange;
+    } else {
+      nextLabel = '$days 天后';
+    }
+
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.deepPurple.shade50,
+          child: Text(cat?.displayIcon ?? '📋'),
+        ),
+        title: Row(
+          children: [
+            Expanded(child: Text(cat?.fullName ?? '未分类')),
+            if (r.isAuto)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('AI 发现', style: TextStyle(fontSize: 10, color: Colors.green)),
+              ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${acc?.name ?? '账户'} · ${r.cycleLabel}'),
+              if (note.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(note, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ),
+              const SizedBox(height: 4),
+              Text(nextLabel, style: TextStyle(fontSize: 12, color: nextColor)),
+            ],
+          ),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '¥${r.amount.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        onTap: () => _openEditSheet(init: r),
+        onLongPress: () => _delete(r),
+      ),
+    );
+  }
+
+  // ── 候选列表 ─────────────────────────────────────────────
+  Widget _buildCandidates() {
+    if (_candidates.isEmpty) {
+      return _empty('暂时没发现规律消费\n记账多一些之后 AI 才能找出周期', icon: '🔍');
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          for (final c in _candidates) _candidateTile(c),
+        ],
+      ),
+    );
+  }
+
+  Widget _candidateTile(RecurringCandidate c) {
+    final cat = _catById[c.categoryId];
+    final acc = _accById[c.accountId];
+    final confPct = (c.confidence * 100).round();
+    final confColor = c.confidence >= 0.9
+        ? Colors.green
+        : c.confidence >= 0.7
+            ? Colors.orange
+            : Colors.grey;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(cat?.displayIcon ?? '📋', style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(cat?.fullName ?? '未分类',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(acc?.name ?? '账户',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                Text('¥${c.amount.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _chip('每月 ${c.cycleDay} 号', Colors.blue),
+                _chip('${c.sampleCount} 笔历史', Colors.purple),
+                _chip('间隔 ${c.avgIntervalDays.toStringAsFixed(0)}±${c.stddevDays.toStringAsFixed(1)} 天', Colors.teal),
+                _chip('置信度 $confPct%', confColor),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    // 忽略候选：本地从列表移除即可（下次刷新还会出现）
+                    setState(() => _candidates.remove(c));
+                  },
+                  child: const Text('忽略'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => _confirmCandidate(c),
+                  child: const Text('确认订阅'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String t, Color c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: c.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(t, style: TextStyle(fontSize: 11, color: c)),
+      );
+
+  Widget _empty(String msg, {String icon = '✨'}) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(36),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 48)),
+              const SizedBox(height: 12),
+              Text(msg,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+      );
+}
+
+// ── 新建 / 编辑 弹窗 ───────────────────────────────────────────
+class _RecurringEditSheet extends StatefulWidget {
+  final RecurringBill? init;
+  final List<Category> categories;
+  final List<Account> accounts;
+
+  const _RecurringEditSheet({
+    this.init,
+    required this.categories,
+    required this.accounts,
+  });
+
+  @override
+  State<_RecurringEditSheet> createState() => _RecurringEditSheetState();
+}
+
+class _RecurringEditSheetState extends State<_RecurringEditSheet> {
+  final _amountCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  String? _categoryId;
+  String? _accountId;
+  int _cycleDay = 1;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.init;
+    if (init != null) {
+      _amountCtrl.text = init.amount.toString();
+      _categoryId = init.categoryId;
+      _accountId = init.accountId;
+      _cycleDay = init.cycleDay;
+      // 解密原始 note 填入
+      if (init.noteCipher != null && init.noteDekVer != null) {
+        _noteCtrl.text = KeyChain.instance.decryptText(
+          ledgerId: init.ledgerId,
+          cipherBase64: init.noteCipher!,
+          dekVer: init.noteDekVer!,
+          systemFallback: '',
+        );
+      }
+    } else {
+      _cycleDay = DateTime.now().day;
+    }
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toast(String s) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s)));
+  }
+
+  Future<void> _save() async {
+    final amount = double.tryParse(_amountCtrl.text);
+    if (amount == null || amount <= 0) return _toast('请输入有效金额');
+    if (_categoryId == null) return _toast('请选择分类');
+    if (_accountId == null) return _toast('请选择账户');
+
+    final acc = widget.accounts.firstWhere((a) => a.id == _accountId);
+    setState(() => _saving = true);
+    try {
+      final cipher = KeyChain.instance.encryptText(
+        ledgerId: acc.ledgerId,
+        plain: _noteCtrl.text.trim(),
+      );
+      final dekVer = KeyChain.instance.dekVersionOf(acc.ledgerId) ?? 1;
+      final body = {
+        'categoryId': _categoryId,
+        'accountId': _accountId,
+        'type': 'expense',
+        'amount': amount,
+        'noteCipher': cipher,
+        'noteDekVer': dekVer,
+        'cycleType': 'monthly',
+        'cycleDay': _cycleDay,
+      };
+      if (widget.init == null) {
+        await ApiService.createRecurring(body);
+      } else {
+        await ApiService.updateRecurring(widget.init!.id, body);
+      }
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      _toast('保存失败：$e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.init == null ? '新建周期账单' : '编辑周期账单',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: '金额',
+                  border: OutlineInputBorder(),
+                  prefixText: '¥ ',
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _categoryId,
+                items: widget.categories
+                    .map((c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Text('${c.displayIcon}  ${c.fullName}'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _categoryId = v),
+                decoration: const InputDecoration(
+                  labelText: '分类',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _accountId,
+                items: widget.accounts
+                    .map((a) => DropdownMenuItem(
+                          value: a.id,
+                          child: Text(a.name),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _accountId = v),
+                decoration: const InputDecoration(
+                  labelText: '账户',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('每月'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Slider(
+                      min: 1,
+                      max: 31,
+                      divisions: 30,
+                      value: _cycleDay.toDouble(),
+                      label: '$_cycleDay 号',
+                      onChanged: (v) => setState(() => _cycleDay = v.round()),
+                    ),
+                  ),
+                  Text('$_cycleDay 号', style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteCtrl,
+                decoration: const InputDecoration(
+                  labelText: '备注 (可选，加密存储)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

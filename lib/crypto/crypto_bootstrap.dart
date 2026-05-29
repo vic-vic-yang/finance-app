@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import 'sm_crypto.dart';
 
 /// 注册 / 登录 / 恢复码 等高层加密流程。
@@ -110,6 +112,33 @@ class CryptoBootstrap {
     return utf8.decode(privBytes);
   }
 
+  /// 用"新密码"重新加密 SM2 私钥 —— 改密码 / 忘密码都用它
+  /// 返回 base64 后端可直接存
+  static String reencryptPrivByPassword({
+    required String privateKeyHex,
+    required String newPassword,
+    required String saltBase64,
+  }) {
+    final salt = Uint8List.fromList(base64.decode(saltBase64));
+    final kek = SmCrypto.pbkdf2Sm3(newPassword, salt, _kdfIters, 16);
+    final privBytes = Uint8List.fromList(utf8.encode(privateKeyHex));
+    final blob = SmCrypto.sm4Encrypt(privBytes, kek);
+    return base64.encode(blob);
+  }
+
+  /// 异步版（PBKDF2 100k 跑 isolate 不阻塞 UI）
+  static Future<String> reencryptPrivByPasswordAsync({
+    required String privateKeyHex,
+    required String newPassword,
+    required String saltBase64,
+  }) {
+    return compute(_isoReencrypt, _ReencryptArgs(
+      privateKeyHex: privateKeyHex,
+      newPassword: newPassword,
+      saltBase64: saltBase64,
+    ));
+  }
+
   /// 把 16 字节随机数格式化为 "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX" 这种好抄的样子
   /// 用 32 个 hex char，按 4 个一组分隔
   static String _formatRecoveryCode(Uint8List bytes) {
@@ -132,6 +161,154 @@ class CryptoBootstrap {
     }
     return out;
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // 异步包装：把重活搬到独立 Isolate（compute），UI 线程不冻结
+  // 使用场景：UI 直接 await *Async 方法，spinner 期间页面仍可滑动 / 响应
+  // ─────────────────────────────────────────────────────────────
+
+  /// 注册前的密钥生成（PBKDF2 × 2 + SM2 keygen + SM2 wrap）—— 在 isolate 里跑
+  static Future<RegisterBundle> prepareRegistrationAsync({
+    required String password,
+  }) {
+    return compute(_isoPrepareRegistration, password);
+  }
+
+  /// 登录后用密码解出私钥（PBKDF2 + SM4）—— 在 isolate 里跑
+  static Future<String> decryptPrivateKeyByPasswordAsync({
+    required String password,
+    required String privByPwdBase64,
+    required String saltBase64,
+  }) {
+    return compute(_isoDecryptPrivByPwd, _PwdArgs(
+      password: password,
+      privByPwdBase64: privByPwdBase64,
+      saltBase64: saltBase64,
+    ));
+  }
+
+  /// 用恢复码解出私钥 —— 在 isolate 里跑
+  static Future<String> decryptPrivateKeyByRecoveryAsync({
+    required String recoveryCode,
+    required String privByRecoveryBase64,
+    required String saltBase64,
+  }) {
+    return compute(_isoDecryptPrivByRec, _RecArgs(
+      recoveryCode: recoveryCode,
+      privByRecoveryBase64: privByRecoveryBase64,
+      saltBase64: saltBase64,
+    ));
+  }
+
+  /// 批量 SM2 解 DEK —— 在 isolate 里跑
+  /// 返回 ledgerId → raw 16-byte DEK 的映射
+  static Future<Map<String, Uint8List>> decryptManyDeksAsync({
+    required String privateKeyHex,
+    required List<DekToUnpack> deks,
+  }) {
+    return compute(_isoDecryptManyDeks, _DeksArgs(
+      privateKeyHex: privateKeyHex,
+      deks: deks,
+    ));
+  }
+}
+
+// ── Isolate 入口函数（必须 top-level，compute 才能调用） ──────
+
+RegisterBundle _isoPrepareRegistration(String password) {
+  return CryptoBootstrap.prepareRegistration(password: password);
+}
+
+String _isoDecryptPrivByPwd(_PwdArgs a) {
+  return CryptoBootstrap.decryptPrivateKeyByPassword(
+    password: a.password,
+    privByPwdBase64: a.privByPwdBase64,
+    saltBase64: a.saltBase64,
+  );
+}
+
+String _isoDecryptPrivByRec(_RecArgs a) {
+  return CryptoBootstrap.decryptPrivateKeyByRecovery(
+    recoveryCode: a.recoveryCode,
+    privByRecoveryBase64: a.privByRecoveryBase64,
+    saltBase64: a.saltBase64,
+  );
+}
+
+String _isoReencrypt(_ReencryptArgs a) {
+  return CryptoBootstrap.reencryptPrivByPassword(
+    privateKeyHex: a.privateKeyHex,
+    newPassword: a.newPassword,
+    saltBase64: a.saltBase64,
+  );
+}
+
+class _ReencryptArgs {
+  final String privateKeyHex;
+  final String newPassword;
+  final String saltBase64;
+  const _ReencryptArgs({
+    required this.privateKeyHex,
+    required this.newPassword,
+    required this.saltBase64,
+  });
+}
+
+Map<String, Uint8List> _isoDecryptManyDeks(_DeksArgs a) {
+  final out = <String, Uint8List>{};
+  for (final d in a.deks) {
+    try {
+      final bytes = base64.decode(d.dekWrappedBase64);
+      final sb = StringBuffer();
+      for (final b in bytes) {
+        sb.write(b.toRadixString(16).padLeft(2, '0'));
+      }
+      out[d.ledgerId] = SmCrypto.sm2Decrypt(sb.toString(), a.privateKeyHex);
+    } catch (_) {
+      // 某个 DEK 解不开（私钥不匹配？）跳过，不让一个失败拖垮全部
+    }
+  }
+  return out;
+}
+
+class _PwdArgs {
+  final String password;
+  final String privByPwdBase64;
+  final String saltBase64;
+  const _PwdArgs({
+    required this.password,
+    required this.privByPwdBase64,
+    required this.saltBase64,
+  });
+}
+
+class _RecArgs {
+  final String recoveryCode;
+  final String privByRecoveryBase64;
+  final String saltBase64;
+  const _RecArgs({
+    required this.recoveryCode,
+    required this.privByRecoveryBase64,
+    required this.saltBase64,
+  });
+}
+
+class _DeksArgs {
+  final String privateKeyHex;
+  final List<DekToUnpack> deks;
+  const _DeksArgs({required this.privateKeyHex, required this.deks});
+}
+
+/// 待解的 DEK 输入项（compute 跨 isolate 传值用）
+class DekToUnpack {
+  final String ledgerId;
+  final String dekWrappedBase64;
+  final int dekVersion;
+  const DekToUnpack({
+    required this.ledgerId,
+    required this.dekWrappedBase64,
+    required this.dekVersion,
+  });
 }
 
 /// 注册时一次性算出的所有材料

@@ -28,15 +28,22 @@ class _BillsScreenState extends State<BillsScreen>
   bool   _loadingMore = false;
   bool   _hasMore = true;
   String? _filterType;
-  String? _filterUserId; // 按记账人筛选
-  // 时间筛选：mode + 锚点日期
+  String? _filterUserId;
   _DateMode _dateMode = _DateMode.all;
   DateTime _dateAnchor = DateTime.now();
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
   int    _page = 1;
 
-  // 算出 startDate / endDate（ISO 字符串）
+  static final _moneyFmt = NumberFormat('#,##0.00');
+  static final _moneyFmtInt = NumberFormat('#,##0');
+
   String? get _startDate {
     if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.range) {
+      if (_rangeStart == null) return null;
+      return DateFormat('yyyy-MM-dd').format(_rangeStart!);
+    }
     if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-01-01';
     final m = _dateAnchor.month.toString().padLeft(2, '0');
     return '${_dateAnchor.year}-$m-01';
@@ -44,6 +51,10 @@ class _BillsScreenState extends State<BillsScreen>
 
   String? get _endDate {
     if (_dateMode == _DateMode.all) return null;
+    if (_dateMode == _DateMode.range) {
+      if (_rangeEnd == null) return null;
+      return DateFormat('yyyy-MM-dd').format(_rangeEnd!);
+    }
     if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-12-31';
     final last = DateTime(_dateAnchor.year, _dateAnchor.month + 1, 0).day;
     final m = _dateAnchor.month.toString().padLeft(2, '0');
@@ -54,6 +65,11 @@ class _BillsScreenState extends State<BillsScreen>
     switch (_dateMode) {
       case _DateMode.all:
         return '全部时间';
+      case _DateMode.range:
+        if (_rangeStart != null && _rangeEnd != null) {
+          return '${DateFormat('M/d').format(_rangeStart!)} ~ ${DateFormat('M/d').format(_rangeEnd!)}';
+        }
+        return '选择范围';
       case _DateMode.year:
         return '${_dateAnchor.year}年';
       case _DateMode.month:
@@ -61,7 +77,6 @@ class _BillsScreenState extends State<BillsScreen>
     }
   }
 
-  // 当前账本成员（用于筛选下拉，name 优先取昵称）
   List<({String id, String name})> _members = [];
   bool _isSharedLedger = false;
 
@@ -130,8 +145,6 @@ class _BillsScreenState extends State<BillsScreen>
       setState(() { _loading = true; _page = 1; _hasMore = true; });
     }
     try {
-      // 进入账单页 / 下拉刷新时：如果本账本的 DEK 尚未到位（pending 状态），
-      // 趁机重拉一次 keys/mine，看是不是已经被别人 wrap 过了
       final cur = await AuthService.getCurrentLedgerId();
       if (cur != null && !KeyChain.instance.hasDek(cur)) {
         await PendingDekResolver.rehydrate(requireLedgerId: cur);
@@ -188,7 +201,7 @@ class _BillsScreenState extends State<BillsScreen>
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('确认删除'),
-        content: Text('删除「${bill.category.name}」¥${bill.amount.toStringAsFixed(2)}？'),
+        content: Text('删除「${bill.category.name}」${bill.amountText}？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           TextButton(
@@ -201,16 +214,6 @@ class _BillsScreenState extends State<BillsScreen>
     if (ok != true) return;
     await ApiService.deleteBill(bill.id);
     bumpRefresh();
-  }
-
-  // 按日期分组
-  Map<String, List<Bill>> get _grouped {
-    final map = <String, List<Bill>>{};
-    for (final b in _bills) {
-      final key = DateFormat('yyyy-MM-dd').format(b.date);
-      map.putIfAbsent(key, () => []).add(b);
-    }
-    return map;
   }
 
   @override
@@ -240,7 +243,6 @@ class _BillsScreenState extends State<BillsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 第 1 行：时间筛选 + 汇总
           SizedBox(
             height: 38,
             child: Row(children: [
@@ -252,13 +254,13 @@ class _BillsScreenState extends State<BillsScreen>
                   children: [
                     if (_totalIncome > 0)
                       TextSpan(
-                          text: '+¥${_totalIncome.toStringAsFixed(0)}  ',
+                          text: '+¥${_moneyFmtInt.format(_totalIncome)}  ',
                           style: const TextStyle(
                               color: AppColors.income,
                               fontWeight: FontWeight.w600)),
                     if (_totalExpense > 0)
                       TextSpan(
-                          text: '-¥${_totalExpense.toStringAsFixed(0)}',
+                          text: '-¥${_moneyFmtInt.format(_totalExpense)}',
                           style: const TextStyle(
                               color: AppColors.expense,
                               fontWeight: FontWeight.w600)),
@@ -268,7 +270,6 @@ class _BillsScreenState extends State<BillsScreen>
             ]),
           ),
           const SizedBox(height: 4),
-          // 第 2 行：类型 + 成员
           SizedBox(
             height: 38,
             child: Row(children: [
@@ -313,8 +314,20 @@ class _BillsScreenState extends State<BillsScreen>
                 fontWeight:
                     isAll ? FontWeight.normal : FontWeight.w600,
               )),
-          // 月/年模式时允许左右翻
-          if (!isAll) ...[
+          if (_dateMode == _DateMode.range) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _dateMode = _DateMode.all;
+                  _rangeStart = null;
+                  _rangeEnd = null;
+                });
+                _load(refresh: true);
+              },
+              child: Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
+            ),
+          ] else if (!isAll) ...[
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () {
@@ -389,6 +402,8 @@ class _BillsScreenState extends State<BillsScreen>
               setState(() {
                 _dateMode = mode;
                 _dateAnchor = anchor;
+                _rangeStart = null;
+                _rangeEnd = null;
               });
               _load(refresh: true);
             },
@@ -458,6 +473,42 @@ class _BillsScreenState extends State<BillsScreen>
                       _dateMode = _DateMode.month;
                       _dateAnchor =
                           DateTime(picked.year, picked.month);
+                      _rangeStart = null;
+                      _rangeEnd = null;
+                    });
+                    _load(refresh: true);
+                  }
+                },
+              ),
+              ListTile(
+                title: Text('自定义范围…',
+                    style: TextStyle(
+                        fontSize: 14, color: AppColors.text1)),
+                trailing: Icon(Icons.date_range_rounded,
+                    color: AppColors.text2, size: 20),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final now = DateTime.now();
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2010),
+                    lastDate: now,
+                    initialDateRange: _rangeStart != null && _rangeEnd != null
+                        ? DateTimeRange(start: _rangeStart!, end: _rangeEnd!)
+                        : DateTimeRange(
+                            start: now.subtract(const Duration(days: 30)),
+                            end: now),
+                    helpText: '选择日期范围',
+                    confirmText: '确定',
+                    cancelText: '取消',
+                    fieldStartHintText: '开始日期',
+                    fieldEndHintText: '结束日期',
+                  );
+                  if (picked != null && mounted) {
+                    setState(() {
+                      _dateMode = _DateMode.range;
+                      _rangeStart = picked.start;
+                      _rangeEnd = picked.end;
                     });
                     _load(refresh: true);
                   }
@@ -471,7 +522,6 @@ class _BillsScreenState extends State<BillsScreen>
     );
   }
 
-  /// 记账人筛选下拉按钮
   Widget _userFilterButton() {
     final selected = _filterUserId != null;
     final currentName = selected
@@ -481,8 +531,6 @@ class _BillsScreenState extends State<BillsScreen>
           ).name
         : null;
     final label = currentName ?? '全员';
-    // PopupMenuButton 把 null 当成"取消"处理 → onSelected 不会触发，
-    // 所以"全员"必须用一个非空哨兵值。
     const allSentinel = '__all__';
     return PopupMenuButton<String>(
       tooltip: '按记账人筛选',
@@ -594,70 +642,89 @@ class _BillsScreenState extends State<BillsScreen>
   }
 
   Widget _list() {
-    final groups = _grouped;
-    final dates  = groups.keys.toList();
+    final dayGroups = <String, List<Bill>>{};
+    for (final b in _bills) {
+      final dayKey = DateFormat('yyyy-MM-dd').format(b.date);
+      dayGroups.putIfAbsent(dayKey, () => []).add(b);
+    }
+    final dayKeys = dayGroups.keys.toList()..sort((a, b) => b.compareTo(a));
+
     return ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      itemCount: dates.length + (_loadingMore ? 1 : 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      itemCount: dayKeys.length + (_loadingMore ? 1 : 0),
       itemBuilder: (_, i) {
-        if (i == dates.length) {
-          return Padding(
+        if (i == dayKeys.length) {
+          return const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            child: Center(child: CircularProgressIndicator()),
           );
         }
-        final date  = dates[i];
-        final items = groups[date]!;
-        final dayIncome  = items.where((b) => b.isIncome).fold(0.0, (s, b) => s + b.amount);
-        final dayExpense = items.where((b) => !b.isIncome).fold(0.0, (s, b) => s + b.amount);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            // 日期头
-            Row(children: [
-              Text(_formatDate(date),
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text2)),
-              const Spacer(),
-              if (dayIncome > 0)
-                Text('+¥${dayIncome.toStringAsFixed(2)} ',
-                    style: const TextStyle(fontSize: 12, color: AppColors.income)),
-              if (dayExpense > 0)
-                Text('-¥${dayExpense.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.expense)),
-            ]),
-            const SizedBox(height: 6),
-            // 账单列表
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+
+        final dayKey = dayKeys[i];
+        final items = dayGroups[dayKey]!;
+        final dayIncome = items
+            .where((b) => b.isIncome)
+            .fold(0.0, (s, b) => s + b.amount);
+        final dayExpense = items
+            .where((b) => !b.isIncome)
+            .fold(0.0, (s, b) => s + b.amount);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Row(children: [
+                  Text(_formatDate(dayKey),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text2)),
+                  const Spacer(),
+                  if (dayIncome > 0)
+                    Text('+¥${_moneyFmt.format(dayIncome)} ',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.income)),
+                  if (dayExpense > 0)
+                    Text('-¥${_moneyFmt.format(dayExpense)}',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.expense)),
+                ]),
               ),
-              child: Column(
-                children: items.asMap().entries.map((e) {
-                  final isLast = e.key == items.length - 1;
-                  return _BillTile(
-                    bill: e.value,
-                    showDivider: !isLast,
-                    showRecorder: _isSharedLedger,
-                    onTap: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AddBillScreen(bill: e.value),
-                        ),
-                      );
-                      if (result == true) _load(refresh: true);
-                    },
-                    onDelete: () => _deleteBill(e.value),
-                  );
-                }).toList(),
+              const SizedBox(height: 4),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: items.map((bill) {
+                    final isLast = items.last == bill;
+                    return _BillTile(
+                      bill: bill,
+                      showDivider: !isLast,
+                      showRecorder: _isSharedLedger,
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AddBillScreen(bill: bill),
+                          ),
+                        );
+                        if (result == true) _load(refresh: true);
+                      },
+                      onDelete: () => _deleteBill(bill),
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -671,7 +738,10 @@ class _BillsScreenState extends State<BillsScreen>
     final d = DateTime(date.year, date.month, date.day);
     if (d == today)     return '今天';
     if (d == yesterday) return '昨天';
-    return DateFormat('M月d日 EEEE', 'zh').format(date);
+    if (date.year == now.year) {
+      return DateFormat('M月d日 EEEE', 'zh').format(date);
+    }
+    return DateFormat('yyyy年M月d日 EEEE', 'zh').format(date);
   }
 
   Widget _empty() => Center(
@@ -735,7 +805,6 @@ class _BillTile extends StatelessWidget {
                               fontWeight: FontWeight.w500,
                               color: AppColors.text1)),
                     ),
-                    // 共享账本下显示记账人小标
                     if (showRecorder && bill.recorderName != null) ...[
                       const SizedBox(width: 6),
                       Container(
@@ -781,7 +850,7 @@ class _BillTile extends StatelessWidget {
               GestureDetector(
                 onTap: onDelete,
                 child: Padding(
-                  padding: EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(4),
                   child: Icon(Icons.delete_outline_rounded,
                       size: 18, color: AppColors.text2),
                 ),
@@ -796,4 +865,4 @@ class _BillTile extends StatelessWidget {
   }
 }
 
-enum _DateMode { all, month, year }
+enum _DateMode { all, month, year, range }

@@ -19,12 +19,14 @@ class KeyChain {
 
   static const _kPrivKeyStorageKey = 'sm2_priv_key_hex';
   static const _kPubKeyStorageKey = 'sm2_pub_key_hex';
+  static const _kKdfSaltStorageKey = 'kdf_salt_b64';
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
   String? _sm2PubKey;
   String? _sm2PrivKey;
+  String? _kdfSaltBase64;
 
   /// ledgerId → DEK (16 bytes) cache
   final Map<String, Uint8List> _deks = {};
@@ -34,19 +36,26 @@ class KeyChain {
 
   String? get sm2PubKey => _sm2PubKey;
   String? get sm2PrivKey => _sm2PrivKey;
+  /// PBKDF2 salt（base64）—— 改密码时不再问服务端
+  String? get kdfSaltBase64 => _kdfSaltBase64;
   bool get hasKey => _sm2PrivKey != null;
 
   /// 登录 / 注册成功后调：把刚解出的私钥放进 KeyChain
   Future<void> setSelf({
     required String pubKey,
     required String privKey,
+    String? kdfSaltBase64,
     bool persist = true,
   }) async {
     _sm2PubKey = pubKey;
     _sm2PrivKey = privKey;
+    if (kdfSaltBase64 != null) _kdfSaltBase64 = kdfSaltBase64;
     if (persist) {
       await _storage.write(key: _kPubKeyStorageKey, value: pubKey);
       await _storage.write(key: _kPrivKeyStorageKey, value: privKey);
+      if (kdfSaltBase64 != null) {
+        await _storage.write(key: _kKdfSaltStorageKey, value: kdfSaltBase64);
+      }
     }
   }
 
@@ -57,6 +66,7 @@ class KeyChain {
     if (pub == null || priv == null) return false;
     _sm2PubKey = pub;
     _sm2PrivKey = priv;
+    _kdfSaltBase64 = await _storage.read(key: _kKdfSaltStorageKey);
     return true;
   }
 
@@ -64,10 +74,12 @@ class KeyChain {
   Future<void> clear() async {
     _sm2PubKey = null;
     _sm2PrivKey = null;
+    _kdfSaltBase64 = null;
     _deks.clear();
     _dekVersions.clear();
     await _storage.delete(key: _kPubKeyStorageKey);
     await _storage.delete(key: _kPrivKeyStorageKey);
+    await _storage.delete(key: _kKdfSaltStorageKey);
   }
 
   // ── DEK 管理 ───────────────────────────────────────────
@@ -88,11 +100,56 @@ class KeyChain {
     _dekVersions[ledgerId] = dekVersion;
   }
 
+  /// 直接装入已解开的 DEK（在 isolate 里批量解完后用，避免 UI 线程再做 SM2）
+  void putDek({
+    required String ledgerId,
+    required Uint8List rawDek,
+    required int dekVersion,
+  }) {
+    _deks[ledgerId] = rawDek;
+    _dekVersions[ledgerId] = dekVersion;
+  }
+
   /// 已缓存的 DEK 取出来
   Uint8List? dekOf(String ledgerId) => _deks[ledgerId];
   int? dekVersionOf(String ledgerId) => _dekVersions[ledgerId];
 
   bool hasDek(String ledgerId) => _deks.containsKey(ledgerId);
+
+  /// 防丢失补救：如果 hasDek=false，调一次 fetcher 拉所有 wrapped DEK
+  /// 然后本地解开装入缓存。
+  ///
+  /// 用法（推荐在所有"加密前置"的 UI 操作处调）：
+  ///   if (!await KeyChain.instance.ensureDek(ledgerId, ApiService.getMyDeks)) {
+  ///     return _inlineError('账本密钥拉不下来');
+  ///   }
+  ///
+  /// 失败原因常见：
+  ///   - 后端/数据库刚启，app 启动那波 getMyDeks 失败被吞了
+  ///   - 新加入共享账本还在 pending（DEK 未 wrap 给你）
+  Future<bool> ensureDek(
+    String ledgerId,
+    Future<Map<String, dynamic>> Function() fetcher,
+  ) async {
+    if (_deks.containsKey(ledgerId)) return true;
+    if (_sm2PrivKey == null) return false; // 没私钥就别尝试了
+    try {
+      final res = await fetcher();
+      final list = (res['deks'] as List?) ?? const [];
+      for (final d in list) {
+        try {
+          loadDek(
+            ledgerId: (d as Map)['ledgerId'] as String,
+            dekWrappedBase64: d['dekWrapped'] as String,
+            dekVersion: (d['dekVersion'] as num?)?.toInt() ?? 1,
+          );
+        } catch (_) {}
+      }
+    } catch (_) {
+      // 网络/服务挂了，不抛
+    }
+    return _deks.containsKey(ledgerId);
+  }
 
   /// 生成一个新账本的 DEK，并用自己的公钥包装（用于创建账本时）
   /// 返回 (dekRaw, dekWrappedBase64, dekVersion=1)

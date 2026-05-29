@@ -1,0 +1,602 @@
+import 'package:flutter/material.dart';
+import '../crypto/key_chain.dart';
+import '../models/bill.dart';
+import '../models/chat_message.dart';
+import '../services/api_service.dart';
+
+/// 对话式财务查询页
+///
+/// - 消息历史在内存里，关闭即丢（避免端到端加密的写入开销）
+/// - 每次 send 把最近 N 条 user/assistant 文本作为 history 发回
+/// - 服务器返回的卡片（stat/budget）内嵌在 AI 气泡下方
+/// - 通路 B：服务器无法解密 note 做商户聚合时，会返回 pendingClientAggregation +
+///   billIds，前端拉这些账单解密后本地构造 MerchantCard
+class ChatScreen extends StatefulWidget {
+  final String ledgerId;
+  const ChatScreen({super.key, required this.ledgerId});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final _ctrl = TextEditingController();
+  final _scroll = ScrollController();
+  final List<ChatTurn> _turns = [];
+  bool _busy = false;
+
+  static const _suggestions = <String>[
+    '这个月花了多少？',
+    '哪个分类花得最多？',
+    '比上月多还是少？',
+    '本月预算用得怎么样？',
+  ];
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send([String? preset]) async {
+    final text = (preset ?? _ctrl.text).trim();
+    if (text.isEmpty || _busy) return;
+    if (preset == null) _ctrl.clear();
+
+    setState(() {
+      _turns.add(ChatTurn(role: 'user', content: text));
+      _busy = true;
+    });
+    _scrollToBottom();
+
+    try {
+      // 取最近 10 轮（5 user + 5 assistant）作为 history
+      final hist = _turns
+          .where((t) => t.role == 'user' || t.role == 'assistant')
+          .toList();
+      // 不把当前这条 user 发回（服务端会单独取 message 字段）
+      final histForApi = hist
+          .sublist(0, hist.length - 1)
+          .map((t) => {'role': t.role, 'content': t.content})
+          .toList()
+        ..take(20); // 客户端再保险截一下
+      final res = await ApiService.aiChat(
+        ledgerId: widget.ledgerId,
+        message: text,
+        history: histForApi,
+      );
+      final reply = (res['reply'] as String?) ?? '';
+      final cardList = (res['cards'] as List? ?? [])
+          .map((c) => ReplyCard.fromJson(c as Map<String, dynamic>))
+          .toList();
+      final pending = res['pendingClientAggregation'] as Map<String, dynamic>?;
+
+      // 商户聚合（通路 B）
+      MerchantCard? merchant;
+      if (pending != null && pending['task'] == 'merchant') {
+        final ids = (pending['billIds'] as List).cast<String>();
+        final period = (pending['period'] as String?) ?? '';
+        merchant = await _aggregateMerchants(ids, period);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _turns.add(ChatTurn(
+          role: 'assistant',
+          content: reply,
+          cards: cardList,
+          merchantCard: merchant,
+        ));
+        _busy = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _turns.add(ChatTurn(role: 'assistant', content: '出错了：$e'));
+        _busy = false;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  /// 通路 B：客户端解密这些 bills 的 note，从中提取商户名（取前 N 个非空段）聚合
+  Future<MerchantCard> _aggregateMerchants(
+    List<String> billIds,
+    String period,
+  ) async {
+    // 拉这些 bill（已经按 ledgerId 隔离）
+    // ApiService.getBills 取最近 limit 条；这里直接调一次拿够，然后过滤
+    final res = await ApiService.getBills(limit: 200);
+    final bills = (res['bills'] as List? ?? [])
+        .map((b) => Bill.fromJson(b as Map<String, dynamic>))
+        .where((b) => billIds.contains(b.id))
+        .toList();
+
+    final byMerchant = <String, _MerchantAgg>{};
+    for (final b in bills) {
+      final note = b.note;
+      // note 形如 "美团外卖·麻辣烫·堂食"，第一段当 merchant
+      final merchant = note.split('·').first.trim();
+      if (merchant.isEmpty || merchant.startsWith('【')) continue;
+      final agg = byMerchant.putIfAbsent(
+        merchant,
+        () => _MerchantAgg(name: merchant),
+      );
+      agg.amount += b.amount;
+      agg.count += 1;
+    }
+    final buckets = byMerchant.values.toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+    return MerchantCard(
+      period: period,
+      totalCount: bills.length,
+      buckets: buckets
+          .take(10)
+          .map((m) => {
+                'merchant': m.name,
+                'amount': m.amount,
+                'count': m.count,
+              })
+          .toList(),
+    );
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent + 200,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('🤖 财记助手')),
+      body: Column(
+        children: [
+          Expanded(
+            child: _turns.isEmpty
+                ? _empty()
+                : ListView.builder(
+                    controller: _scroll,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    itemCount: _turns.length + (_busy ? 1 : 0),
+                    itemBuilder: (_, i) {
+                      if (i == _turns.length) return _thinkingBubble();
+                      return _bubble(_turns[i]);
+                    },
+                  ),
+          ),
+          _inputBar(),
+        ],
+      ),
+    );
+  }
+
+  // ── 空状态 ─────────────────────────────────────────────
+  Widget _empty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('💬', style: TextStyle(fontSize: 56)),
+            const SizedBox(height: 12),
+            const Text(
+              '问问你的钱去哪了',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '我可以帮你查统计、看预算、找趋势',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final s in _suggestions)
+                  ActionChip(label: Text(s), onPressed: () => _send(s)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 气泡 ─────────────────────────────────────────────
+  Widget _bubble(ChatTurn t) {
+    final isUser = t.isUser;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isUser) ...[
+            const CircleAvatar(
+              radius: 16,
+              backgroundColor: Color(0xffeef2ff),
+              child: Text('🤖', style: TextStyle(fontSize: 14)),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.78,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? Theme.of(context).primaryColor.withOpacity(0.1)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(14).copyWith(
+                      topLeft: isUser ? null : const Radius.circular(2),
+                      topRight: isUser ? const Radius.circular(2) : null,
+                    ),
+                  ),
+                  child: Text(
+                    t.content,
+                    style: const TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ),
+                for (final c in t.cards) ...[
+                  const SizedBox(height: 6),
+                  _renderCard(c),
+                ],
+                if (t.merchantCard != null) ...[
+                  const SizedBox(height: 6),
+                  _merchantCardWidget(t.merchantCard!),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _thinkingBubble() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 16,
+            backgroundColor: Color(0xffeef2ff),
+            child: Text('🤖', style: TextStyle(fontSize: 14)),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text('思考中…', style: TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 卡片渲染 ───────────────────────────────────────────
+  Widget _renderCard(ReplyCard c) {
+    if (c.type == 'stat') {
+      return _statCard(c.data);
+    }
+    if (c.type == 'budget') {
+      return _budgetCard(c.data);
+    }
+    // 未知类型：JSON 兜底
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Text(c.data.toString(),
+          style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+    );
+  }
+
+  Widget _statCard(Map<String, dynamic> data) {
+    final title = (data['title'] as String?) ?? '统计';
+    final total = ((data['total'] as num?) ?? 0).toDouble();
+    final count = (data['count'] as num?)?.toInt();
+    final period = data['period'] as String?;
+    final buckets = (data['buckets'] as List? ?? [])
+        .cast<Map>()
+        .map((b) => b.cast<String, dynamic>())
+        .toList();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              if (period != null) ...[
+                const Spacer(),
+                Text(period, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '¥${total.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              if (count != null) ...[
+                const SizedBox(width: 8),
+                Text('$count 笔',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              ],
+            ],
+          ),
+          if (buckets.isNotEmpty) ...[
+            const Divider(height: 16),
+            for (final b in buckets.take(8))
+              _bucketRow(
+                (b['label'] as String?) ?? '?',
+                ((b['amount'] as num?) ?? 0).toDouble(),
+                total,
+                count: (b['count'] as num?)?.toInt(),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _bucketRow(String label, double amount, double total, {int? count}) {
+    final ratio = total > 0 ? (amount / total).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+              if (count != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text('$count',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                ),
+              Text('¥${amount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          LinearProgressIndicator(
+            value: ratio,
+            minHeight: 4,
+            backgroundColor: Colors.grey.shade100,
+            valueColor: AlwaysStoppedAnimation(Colors.blue.shade300),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _budgetCard(Map<String, dynamic> data) {
+    final items = (data['items'] as List? ?? [])
+        .cast<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Text('未设预算', style: TextStyle(fontSize: 12)),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('预算执行', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 6),
+          for (final it in items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          (it['categoryName'] as String?) ?? '',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        '¥${((it['spent'] as num?) ?? 0).toStringAsFixed(0)} / ${((it['limit'] as num?) ?? 0).toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  LinearProgressIndicator(
+                    value: ((it['rate'] as num?) ?? 0).toDouble().clamp(0.0, 1.0),
+                    minHeight: 4,
+                    backgroundColor: Colors.grey.shade100,
+                    valueColor: AlwaysStoppedAnimation(
+                      ((it['rate'] as num?) ?? 0) >= 1
+                          ? Colors.red
+                          : ((it['rate'] as num?) ?? 0) >= 0.9
+                              ? Colors.orange
+                              : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _merchantCardWidget(MerchantCard m) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🏪 商户分布',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Spacer(),
+              Text(m.period,
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (m.buckets.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Text('没识别出商户名（账单可能没填备注）',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            )
+          else
+            for (final b in m.buckets)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        b['merchant'] as String,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    Text(
+                      '${(b['count'] as int)} 笔',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '¥${(b['amount'] as double).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+          if (m.totalCount > m.buckets.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '共 ${m.totalCount} 笔，仅显示 top ${m.buckets.length}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── 输入栏 ─────────────────────────────────────────────
+  Widget _inputBar() {
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                enabled: !_busy,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                decoration: const InputDecoration(
+                  hintText: '问问你的财务情况…',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(24))),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _busy ? null : () => _send(),
+              style: FilledButton.styleFrom(
+                shape: const CircleBorder(),
+                padding: const EdgeInsets.all(12),
+              ),
+              child: const Icon(Icons.send_rounded, size: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MerchantAgg {
+  final String name;
+  double amount = 0;
+  int count = 0;
+  _MerchantAgg({required this.name});
+}

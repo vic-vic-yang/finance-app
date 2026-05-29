@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/refresh_bus.dart';
+import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import 'accounts_screen.dart';
+import 'ai_imports_screen.dart';
 import 'bills_screen.dart';
+import 'chat_screen.dart';
+import 'goals_screen.dart';
+import 'monthly_report_screen.dart';
+import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -133,6 +139,61 @@ class _ProfileScreenState extends State<ProfileScreen>
               MaterialPageRoute(builder: (_) => const AccountsScreen()),
             ),
           ),
+          _tile(
+            icon: '🤖',
+            title: 'AI 智能导入',
+            subtitle: '上传图片 / PDF / Excel / CSV，AI 自动补账单',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AiImportsScreen()),
+            ),
+          ),
+          _tile(
+            icon: '📋',
+            title: '订阅管家',
+            subtitle: '周期账单 + AI 自动识别',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RecurringScreen()),
+            ),
+          ),
+          _tile(
+            icon: '🎯',
+            title: '储蓄目标',
+            subtitle: '设个目标，AI 帮你看进度',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GoalsScreen()),
+            ),
+          ),
+          _tile(
+            icon: '📊',
+            title: '月报',
+            subtitle: '本月 / 上月 AI 总结',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MonthlyReportScreen()),
+            ),
+          ),
+          _tile(
+            icon: '💬',
+            title: 'AI 对话助手',
+            subtitle: '"这个月外卖花多少？" 这种自然提问',
+            onTap: () async {
+              final lid = await AuthService.getCurrentLedgerId();
+              if (!mounted) return;
+              if (lid == null || lid.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请先选择账本')),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ChatScreen(ledgerId: lid)),
+              );
+            },
+          ),
           const SizedBox(height: 20),
           _section('设置'),
           _tile(
@@ -140,6 +201,12 @@ class _ProfileScreenState extends State<ProfileScreen>
             title: '个性化',
             subtitle: '主题色 · 亮/暗模式',
             onTap: () => _showThemeSheet(),
+          ),
+          _tile(
+            icon: '🔑',
+            title: '修改密码',
+            subtitle: '换一个登录密码',
+            onTap: () => _showChangePasswordSheet(),
           ),
           _tile(
             icon: '🌐',
@@ -464,6 +531,150 @@ class _ProfileScreenState extends State<ProfileScreen>
               borderRadius: BorderRadius.circular(14)),
         ),
       );
+
+  Future<void> _showChangePasswordSheet() async {
+    final salt = KeyChain.instance.kdfSaltBase64;
+    final priv = KeyChain.instance.sm2PrivKey;
+    if (salt == null || priv == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('密钥未就绪，请重新登录'),
+      ));
+      return;
+    }
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confCtrl = TextEditingController();
+    bool busy = false;
+    String? err;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20, 18, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(Icons.key_rounded, color: AppColors.primary, size: 20),
+                const SizedBox(width: 8),
+                Text('修改密码',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text1)),
+              ]),
+              const SizedBox(height: 14),
+              TextField(
+                controller: oldCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '当前密码',
+                  prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: newCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '新密码（至少 6 位）',
+                  prefixIcon: Icon(Icons.lock_open_rounded, size: 18),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: confCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '确认新密码',
+                  prefixIcon: Icon(Icons.lock_open_rounded, size: 18),
+                ),
+              ),
+              if (err != null) ...[
+                const SizedBox(height: 8),
+                Text(err!,
+                    style: TextStyle(color: AppColors.expense, fontSize: 12)),
+              ],
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final oldP = oldCtrl.text;
+                        final newP = newCtrl.text;
+                        if (oldP.isEmpty || newP.isEmpty) {
+                          setLocal(() => err = '请填写完整');
+                          return;
+                        }
+                        if (newP.length < 6) {
+                          setLocal(() => err = '新密码至少 6 位');
+                          return;
+                        }
+                        if (newP != confCtrl.text) {
+                          setLocal(() => err = '两次输入不一致');
+                          return;
+                        }
+                        if (newP == oldP) {
+                          setLocal(() => err = '新密码不能跟旧密码相同');
+                          return;
+                        }
+                        setLocal(() {
+                          busy = true;
+                          err = null;
+                        });
+                        try {
+                          // 1. 用新密码 + 同 salt 重新加密 privKey（isolate）
+                          final newPrivByPwd = await CryptoBootstrap
+                              .reencryptPrivByPasswordAsync(
+                            privateKeyHex: priv,
+                            newPassword: newP,
+                            saltBase64: salt,
+                          );
+                          // 2. POST
+                          await ApiService.changePassword(
+                            oldPassword: oldP,
+                            newPassword: newP,
+                            sm2PrivByPwd: newPrivByPwd,
+                          );
+                          if (!mounted) return;
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(
+                                content: Text('密码已更新，下次登录请用新密码'),
+                              ));
+                        } catch (e) {
+                          setLocal(() {
+                            busy = false;
+                            err = '失败：${e.toString().replaceAll(RegExp(r'^[^:]*:'), '').trim()}';
+                          });
+                        }
+                      },
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('确认修改'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    oldCtrl.dispose();
+    newCtrl.dispose();
+    confCtrl.dispose();
+  }
 
   void _showThemeSheet() {
     showModalBottomSheet(

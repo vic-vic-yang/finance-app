@@ -18,6 +18,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passCtrl = TextEditingController();
   bool _loading = false;
   bool _obscure = true;
+  /// 当前正在做什么 —— 显示在按钮上让用户知道进度
+  String _stage = '';
 
   Future<void> _login() async {
     final username = _userCtrl.text.trim();
@@ -26,16 +28,25 @@ class _LoginScreenState extends State<LoginScreen> {
       _snack('请填写用户名和密码');
       return;
     }
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _stage = '正在登录…';
+    });
+    // 网络慢时给用户一个进度暗示，不要让 spinner 一直转不变化
+    final slowHint = Timer(const Duration(seconds: 3), () {
+      if (mounted && _stage == '正在登录…') {
+        setState(() => _stage = '服务器响应较慢，请稍候…');
+      }
+    });
     try {
       final result = await ApiService.login(username, password);
+      slowHint.cancel();
       if (!mounted) return;
       if (result['token'] == null) {
         _snack(result['message'] ?? '登录失败');
         return;
       }
 
-      // 1. 用密码解出 SM2 私钥（PBKDF2 + SM4 大约 1~2 秒）
       final bundle = result['keyBundle'] as Map<String, dynamic>?;
       if (bundle == null ||
           bundle['sm2PubKey'] == null ||
@@ -44,35 +55,52 @@ class _LoginScreenState extends State<LoginScreen> {
         _snack('该账号尚未启用加密，请联系管理员或重新注册');
         return;
       }
-      final privHex = await Future(() =>
-          CryptoBootstrap.decryptPrivateKeyByPassword(
-            password: password,
-            privByPwdBase64: bundle['sm2PrivByPwd'] as String,
-            saltBase64: bundle['kdfSalt'] as String,
-          ));
+
+      // 1. 用密码解出 SM2 私钥（PBKDF2 100k）—— 在独立 isolate 跑，UI 不冻结
+      setState(() => _stage = '解密身份密钥…');
+      final privHex = await CryptoBootstrap.decryptPrivateKeyByPasswordAsync(
+        password: password,
+        privByPwdBase64: bundle['sm2PrivByPwd'] as String,
+        saltBase64: bundle['kdfSalt'] as String,
+      );
 
       await KeyChain.instance.setSelf(
         pubKey: bundle['sm2PubKey'] as String,
         privKey: privHex,
+        kdfSaltBase64: bundle['kdfSalt'] as String,
         persist: true,
       );
 
-      // 2. 拉取自己在所有账本里的 dekWrapped，全部解开缓存
+      // 2. 拉取所有账本的 dekWrapped + 在 isolate 里批量 SM2 解密
+      setState(() => _stage = '加载账本密钥…');
       final deks = await ApiService.getMyDeks();
       final list = (deks['deks'] as List?) ?? [];
-      for (final d in list) {
-        try {
-          KeyChain.instance.loadDek(
-            ledgerId: d['ledgerId'] as String,
-            dekWrappedBase64: d['dekWrapped'] as String,
-            dekVersion: d['dekVersion'] as int,
-          );
-        } catch (_) {
-          // 某个账本解不开（极少见，私钥不匹配）—— 跳过，其他账本仍可用
+      if (list.isNotEmpty) {
+        final items = <DekToUnpack>[
+          for (final d in list)
+            DekToUnpack(
+              ledgerId: d['ledgerId'] as String,
+              dekWrappedBase64: d['dekWrapped'] as String,
+              dekVersion: (d['dekVersion'] as num?)?.toInt() ?? 1,
+            ),
+        ];
+        final unpacked = await CryptoBootstrap.decryptManyDeksAsync(
+          privateKeyHex: privHex,
+          deks: items,
+        );
+        for (final item in items) {
+          final raw = unpacked[item.ledgerId];
+          if (raw != null) {
+            KeyChain.instance.putDek(
+              ledgerId: item.ledgerId,
+              rawDek: raw,
+              dekVersion: item.dekVersion,
+            );
+          }
         }
       }
 
-      // 3. 机会式：给所有账本里 pending 的新成员补 wrap DEK（不阻塞跳转）
+      // 3. 机会式补 wrap，不阻塞跳转
       PendingDekResolver.resetCooldown();
       unawaited(PendingDekResolver.resolveAll());
 
@@ -81,7 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _snack('登录失败：$e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      slowHint.cancel();
+      if (mounted) setState(() { _loading = false; _stage = ''; });
     }
   }
 
@@ -187,15 +216,32 @@ class _LoginScreenState extends State<LoginScreen> {
               ElevatedButton(
                 onPressed: _loading ? null : _login,
                 child: _loading
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.onPrimary),
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.onPrimary),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(_stage.isEmpty ? '登录中…' : _stage),
+                        ],
                       )
                     : const Text('登录'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/forgot-password'),
+                  child: Text('忘记密码？用恢复码找回',
+                      style: TextStyle(
+                          color: AppColors.text2, fontSize: 13)),
+                ),
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

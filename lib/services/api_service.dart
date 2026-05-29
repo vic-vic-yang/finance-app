@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show HttpClient;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'auth_service.dart';
 
 class ApiService {
@@ -13,6 +16,23 @@ class ApiService {
   static final String baseUrl = kIsWeb
       ? 'http://localhost:3000/api'
       : _publicHost;
+
+  /// 单例 HTTP Client —— 连接保活 + TLS 复用，消除每次请求 1.5+ 秒的 TLS 握手
+  ///
+  /// 原因：`http.post()` 顶层方法内部 new Client + 发请求 + close()，
+  ///       每次都要重新 TCP+TLS。改用长存 Client 后，第一次请求建好 TLS，
+  ///       之后所有请求共用同一个 connection（最长 idle 由 maxConnectionsPerHost 控制）。
+  static final http.Client _client = () {
+    if (kIsWeb) return http.Client(); // Web 平台没 dart:io
+    final inner = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8)
+      ..idleTimeout = const Duration(seconds: 60)
+      ..maxConnectionsPerHost = 6;
+    return IOClient(inner);
+  }();
+
+  /// 所有请求超时：避免后端卡死时 spinner 转到天荒地老
+  static const _kRequestTimeout = Duration(seconds: 20);
 
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.getToken();
@@ -28,7 +48,8 @@ class ApiService {
   }) async {
     final uri =
         Uri.parse('$baseUrl$path').replace(queryParameters: params);
-    final res = await http.get(uri, headers: await _headers());
+    final res =
+        await _client.get(uri, headers: await _headers()).timeout(_kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -36,11 +57,13 @@ class ApiService {
     String path,
     Map<String, dynamic> body,
   ) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl$path'),
-      headers: await _headers(),
-      body: jsonEncode(body),
-    );
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl$path'),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        )
+        .timeout(_kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -48,11 +71,13 @@ class ApiService {
     String path,
     Map<String, dynamic> body,
   ) async {
-    final res = await http.put(
-      Uri.parse('$baseUrl$path'),
-      headers: await _headers(),
-      body: jsonEncode(body),
-    );
+    final res = await _client
+        .put(
+          Uri.parse('$baseUrl$path'),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        )
+        .timeout(_kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -60,18 +85,32 @@ class ApiService {
     String path,
     Map<String, dynamic> body,
   ) async {
-    final res = await http.patch(
-      Uri.parse('$baseUrl$path'),
-      headers: await _headers(),
-      body: jsonEncode(body),
-    );
+    final res = await _client
+        .patch(
+          Uri.parse('$baseUrl$path'),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        )
+        .timeout(_kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   static Future<Map<String, dynamic>> _delete(String path) async {
-    final res =
-        await http.delete(Uri.parse('$baseUrl$path'), headers: await _headers());
+    final res = await _client
+        .delete(Uri.parse('$baseUrl$path'), headers: await _headers())
+        .timeout(_kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// 应用启动后调一次：预热 TLS 连接，让用户后续登录第一次请求就走快路
+  /// 失败静默（说明后端暂时不可达，登录时会再报错）
+  static Future<void> prewarm() async {
+    if (kIsWeb) return;
+    try {
+      await _client
+          .get(Uri.parse('$baseUrl/auth/me'))
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {/* 静默 */}
   }
 
   // ── Auth ──────────────────────────────────────────────────
@@ -105,6 +144,42 @@ class ApiService {
       'kdfSalt': kdfSalt,
       'recoveryHash': recoveryHash,
       'personalLedgerDekWrapped': personalLedgerDekWrapped,
+    });
+    if (data['token'] != null) {
+      await AuthService.saveAuth(data['token'], data['user']);
+    }
+    return data;
+  }
+
+  /// 修改密码（登录态）
+  /// 客户端必须先把 sm2PrivByPwd 用新密码 KDF 重新加密
+  static Future<Map<String, dynamic>> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String sm2PrivByPwd,
+  }) =>
+      _post('/auth/change-password', {
+        'oldPassword': oldPassword,
+        'newPassword': newPassword,
+        'sm2PrivByPwd': sm2PrivByPwd,
+      });
+
+  /// 忘密码第一步：服务端返回 salt + 恢复码加密的 privKey 密文
+  static Future<Map<String, dynamic>> recoverStart(String username) =>
+      _post('/auth/recover/start', {'username': username});
+
+  /// 忘密码第二步：服务端验证恢复码 → 改 bcrypt → 自动登录
+  static Future<Map<String, dynamic>> recoverFinish({
+    required String username,
+    required String recoveryCode,
+    required String newPassword,
+    required String sm2PrivByPwd,
+  }) async {
+    final data = await _post('/auth/recover/finish', {
+      'username': username,
+      'recoveryCode': recoveryCode,
+      'newPassword': newPassword,
+      'sm2PrivByPwd': sm2PrivByPwd,
     });
     if (data['token'] != null) {
       await AuthService.saveAuth(data['token'], data['user']);
@@ -414,4 +489,135 @@ class ApiService {
   static Future<Map<String, dynamic>> removeMember(
           String ledgerId, String userId) =>
       _delete('/ledgers/$ledgerId/members/$userId');
+
+  // ── AI 智能导入 ────────────────────────────────────────────
+  static Future<Map<String, dynamic>> aiListModels() =>
+      _get('/ai/models');
+
+  static Future<Map<String, dynamic>> aiListImports(String ledgerId) =>
+      _get('/ai/imports', params: {'ledgerId': ledgerId});
+
+  static Future<Map<String, dynamic>> aiGetImport(String id) =>
+      _get('/ai/imports/$id');
+
+  static Future<Map<String, dynamic>> aiDeleteImport(String id) =>
+      _delete('/ai/imports/$id');
+
+  /// 上传文件 → 立刻返回 importId，后端异步处理
+  static Future<Map<String, dynamic>> aiUploadImport({
+    required String ledgerId,
+    required String accountId,
+    required String filename,
+    required List<int> bytes,
+    String? modelName,
+  }) async {
+    final uri = Uri.parse('$baseUrl/ai/imports');
+    final req = http.MultipartRequest('POST', uri);
+    final token = await AuthService.getToken();
+    if (token != null) req.headers['Authorization'] = 'Bearer $token';
+    req.fields['ledgerId'] = ledgerId;
+    req.fields['accountId'] = accountId;
+    if (modelName != null) req.fields['modelName'] = modelName;
+    req.files.add(http.MultipartFile.fromBytes(
+      'file',
+      bytes,
+      filename: filename,
+    ));
+    final streamed =
+        await _client.send(req).timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// 客户端把加密后的 bills 回填 → 后端入库 + 标记 done
+  static Future<Map<String, dynamic>> aiApplyImport(
+    String id,
+    List<Map<String, dynamic>> bills,
+  ) =>
+      _post('/ai/imports/$id/apply', {'bills': bills});
+
+  // ─── 周期账单 / 订阅管家 ───────────────────────────────────
+  static Future<Map<String, dynamic>> recurringCandidates() =>
+      _get('/recurring/candidates');
+
+  static Future<Map<String, dynamic>> recurringList() => _get('/recurring');
+
+  static Future<Map<String, dynamic>> createRecurring(
+    Map<String, dynamic> body,
+  ) =>
+      _post('/recurring', body);
+
+  static Future<Map<String, dynamic>> updateRecurring(
+    String id,
+    Map<String, dynamic> body,
+  ) =>
+      _patch('/recurring/$id', body);
+
+  static Future<Map<String, dynamic>> deleteRecurring(String id) =>
+      _delete('/recurring/$id');
+
+  // ─── 储蓄目标 ──────────────────────────────────────────
+  static Future<Map<String, dynamic>> getGoals() => _get('/goals');
+
+  static Future<Map<String, dynamic>> createGoal(
+    Map<String, dynamic> body,
+  ) =>
+      _post('/goals', body);
+
+  static Future<Map<String, dynamic>> updateGoal(
+    String id,
+    Map<String, dynamic> body,
+  ) =>
+      _patch('/goals/$id', body);
+
+  static Future<Map<String, dynamic>> deleteGoal(String id) =>
+      _delete('/goals/$id');
+
+  // ─── AI 月报 ───────────────────────────────────────────
+  static Future<Map<String, dynamic>> aiMonthlyReport({
+    required String ledgerId,
+    required int year,
+    required int month,
+    required Map<String, dynamic> aggregates,
+  }) =>
+      _post('/ai/monthly-report', {
+        'ledgerId': ledgerId,
+        'period': {'year': year, 'month': month},
+        'aggregates': aggregates,
+      });
+
+  // ─── AI 对话查询 ──────────────────────────────────────────
+  static Future<Map<String, dynamic>> aiChat({
+    required String ledgerId,
+    required String message,
+    List<Map<String, String>>? history,
+  }) =>
+      _post('/ai/chat', {
+        'ledgerId': ledgerId,
+        'message': message,
+        if (history != null) 'history': history,
+      });
+
+  // ─── AI 自然语言解析（NL 一句话记账）────────────────────
+  static Future<Map<String, dynamic>> aiParseText({
+    required String ledgerId,
+    required String text,
+    String? accountId,
+    Map<String, dynamic>? prevDraft,
+  }) =>
+      _post('/ai/parse-text', {
+        'ledgerId': ledgerId,
+        'text': text,
+        if (accountId != null) 'accountId': accountId,
+        if (prevDraft != null) 'prevDraft': prevDraft,
+      });
+
+  // ─── AI 洞察 ──────────────────────────────────────────────
+  static Future<Map<String, dynamic>> aiInsights() => _get('/ai/insights');
+
+  static Future<Map<String, dynamic>> aiDismissInsight({
+    required String type,
+    required String target,
+  }) =>
+      _post('/ai/insights/dismiss', {'type': type, 'target': target});
 }

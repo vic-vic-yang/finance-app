@@ -1,4 +1,12 @@
+import 'package:intl/intl.dart';
+
 import '../crypto/key_chain.dart';
+
+final _moneyFmt = NumberFormat('#,##0.00');
+final _moneyFmtInt = NumberFormat('#,##0');
+
+String fmtMoney(double amount) => '¥${_moneyFmt.format(amount)}';
+String fmtMoneyInt(double amount) => '¥${_moneyFmtInt.format(amount)}';
 
 class BillCategory {
   final String id;
@@ -128,6 +136,6 @@ class Bill {
 
   bool get isIncome => type == 'income';
   String get amountText =>
-      '${isIncome ? '+' : '-'}¥${amount.toStringAsFixed(2)}';
+      '${isIncome ? '+' : '-'}${fmtMoney(amount)}';
   String? get recorderName => user?.displayName;
 }

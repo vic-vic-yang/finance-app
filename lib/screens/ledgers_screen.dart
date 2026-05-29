@@ -119,6 +119,10 @@ class _LedgersScreenState extends State<LedgersScreen> {
     if (ok != true) return;
     final name = nameCtrl.text.trim();
     if (name.isEmpty) return;
+    if (!KeyChain.instance.hasKey) {
+      _toast('密钥未就绪，请退出后重新登录');
+      return;
+    }
     try {
       // 客户端本地生成 DEK 并用自己的公钥包装
       final pack = KeyChain.instance.newDekForOwner();

@@ -9,10 +9,6 @@ import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
 
-RegisterBundle _prepareRegistrationIsolate(String password) {
-  return CryptoBootstrap.prepareRegistration(password: password);
-}
-
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override
@@ -26,6 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   bool _obscure1 = true;
   bool _obscure2 = true;
+  String _stage = '';
 
   Future<void> _register() async {
     final username = _userCtrl.text.trim();
@@ -35,17 +32,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (password != confirm) { _snack('两次密码不一致'); return; }
     if (password.length < 6) { _snack('密码至少6个字符'); return; }
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _stage = '生成加密密钥…';
+    });
     try {
-      // 1. 本地预先生成所有密钥材料
-      // PBKDF2 100k × 2 + SM2 keypair 是纯 CPU 重活：
-      //   - Android AOT：约 2-5 秒
-      //   - Flutter Web (Dart→JS)：可能 30-60 秒
-      // 用 compute() 在移动端会跑到独立 isolate，UI 不卡；
-      // Web 上 compute() 会退化到主线程，但至少不会更糟。
+      // 1. 在独立 isolate 里生成所有密钥材料（SM2 keypair + 2× PBKDF2 100k + SM2 wrap）
+      // 期间 UI 线程依然响应，spinner 流畅旋转
       final sw = Stopwatch()..start();
-      final bundle = await compute(_prepareRegistrationIsolate, password);
+      final bundle = await CryptoBootstrap.prepareRegistrationAsync(
+        password: password,
+      );
       debugPrint('[register] crypto bundle ready in ${sw.elapsedMilliseconds}ms');
+
+      if (!mounted) return;
+      setState(() => _stage = '注册中…');
 
       // 2. 把密文 / 公钥 上传服务端
       final result = await ApiService.register(
@@ -68,6 +69,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await KeyChain.instance.setSelf(
         pubKey: bundle.sm2PubKey,
         privKey: bundle.privateKeyHex,
+        kdfSaltBase64: bundle.kdfSaltBase64,
         persist: true,
       );
       // 4. 个人账本 DEK 直接落本地，省一次拉接口
@@ -95,7 +97,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       _snack('注册失败：$e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _stage = ''; });
     }
   }
 
@@ -278,7 +280,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: AppColors.onPrimary)),
                           const SizedBox(width: 10),
-                          const Text('正在生成加密密钥...'),
+                          Text(_stage.isEmpty ? '处理中…' : _stage),
                         ],
                       )
                     : const Text('注册'),

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
+import '../models/bill.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -335,7 +336,7 @@ class _StatsScreenState extends State<StatsScreen>
                       fontWeight: FontWeight.w500)),
               const SizedBox(width: 2),
               Text(
-                _assetTotal.toStringAsFixed(2),
+                fmtMoney(_assetTotal),
                 style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -382,7 +383,7 @@ class _StatsScreenState extends State<StatsScreen>
             ),
           ),
           const SizedBox(width: 5),
-          Text('$label ¥${value.toStringAsFixed(0)}',
+          Text('$label ${fmtMoneyInt(value)}',
               style: TextStyle(fontSize: 11, color: AppColors.text2)),
         ],
       );
@@ -437,7 +438,7 @@ class _StatsScreenState extends State<StatsScreen>
               final idx = it.x.toInt();
               final date = _assetTrend[idx].date;
               return LineTooltipItem(
-                '$date\n¥${it.y.toStringAsFixed(2)}',
+                '$date\n${fmtMoney(it.y)}',
                 TextStyle(
                     color: AppColors.surface,
                     fontSize: 11,
@@ -498,7 +499,7 @@ class _StatsScreenState extends State<StatsScreen>
                     fontSize: 12, color: color, fontWeight: FontWeight.w500)),
             const SizedBox(height: 6),
             Text(
-              '¥${amount.abs().toStringAsFixed(0)}',
+              '${fmtMoneyInt(amount.abs())}',
               style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -564,14 +565,14 @@ class _StatsScreenState extends State<StatsScreen>
                         fontWeight: FontWeight.w500)),
                 const Spacer(),
                 if (totalIncome > 0) ...[
-                  Text('+¥${totalIncome.toStringAsFixed(0)}  ',
+                  Text('+${fmtMoneyInt(totalIncome)}  ',
                       style: TextStyle(
                           fontSize: 12,
                           color: AppColors.income,
                           fontWeight: FontWeight.w600)),
                 ],
                 if (totalExpense > 0)
-                  Text('-¥${totalExpense.toStringAsFixed(0)}',
+                  Text('-${fmtMoneyInt(totalExpense)}',
                       style: TextStyle(
                           fontSize: 12,
                           color: AppColors.expense,
@@ -635,7 +636,7 @@ class _StatsScreenState extends State<StatsScreen>
               Text('收入 ',
                   style:
                       TextStyle(fontSize: 11, color: AppColors.text2)),
-              Text('+¥${m.income.toStringAsFixed(2)}',
+              Text('+${fmtMoney(m.income)}',
                   style: TextStyle(
                       fontSize: 12,
                       color: AppColors.income,
@@ -646,7 +647,7 @@ class _StatsScreenState extends State<StatsScreen>
               Text('支出 ',
                   style:
                       TextStyle(fontSize: 11, color: AppColors.text2)),
-              Text('-¥${m.expense.toStringAsFixed(2)}',
+              Text('-${fmtMoney(m.expense)}',
                   style: TextStyle(
                       fontSize: 12,
                       color: AppColors.expense,
@@ -782,7 +783,7 @@ class _StatsScreenState extends State<StatsScreen>
                           overflow: TextOverflow.ellipsis),
                     ),
                     Text(
-                      '¥${s.total.toStringAsFixed(0)}',
+                      fmtMoneyInt(s.total),
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -838,7 +839,7 @@ class _StatsScreenState extends State<StatsScreen>
                                       fontWeight: FontWeight.w500,
                                       color: AppColors.text1)),
                               const Spacer(),
-                              Text('¥${s.total.toStringAsFixed(2)}',
+                              Text(fmtMoney(s.total),
                                   style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,

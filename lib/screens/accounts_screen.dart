@@ -4,6 +4,7 @@ import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../crypto/key_chain.dart';
 import '../models/account.dart';
+import '../models/bill.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
@@ -24,6 +25,7 @@ class _AccountsScreenState extends State<AccountsScreen>
 
   List<Account> _accounts = [];
   bool _loading = true;
+  String? _currentLedgerId;
 
   @override
   void initState() {
@@ -46,9 +48,9 @@ class _AccountsScreenState extends State<AccountsScreen>
     setState(() => _loading = true);
     try {
       // 进入账户页时：如果本账本 DEK 还没拿到（pending 状态），尝试重拉一次
-      final cur = await AuthService.getCurrentLedgerId();
-      if (cur != null && !KeyChain.instance.hasDek(cur)) {
-        await PendingDekResolver.rehydrate(requireLedgerId: cur);
+      _currentLedgerId = await AuthService.getCurrentLedgerId();
+      if (_currentLedgerId != null && !KeyChain.instance.hasDek(_currentLedgerId!)) {
+        await PendingDekResolver.rehydrate(requireLedgerId: _currentLedgerId!);
       }
       final res = await ApiService.getAccounts();
       if (!mounted) return;
@@ -117,7 +119,7 @@ class _AccountsScreenState extends State<AccountsScreen>
                         style: TextStyle(color: fg.withOpacity(0.7), fontSize: 13)),
                     const SizedBox(height: 6),
                     Text(
-                      '¥${_totalBalance.toStringAsFixed(2)}',
+                      fmtMoney(_totalBalance),
                       style: TextStyle(
                           color: fg,
                           fontSize: 36,
@@ -240,30 +242,34 @@ class _AccountsScreenState extends State<AccountsScreen>
       builder: (_) => _AccountSheet(
         account: account,
         onSaved: bumpRefresh,
+        fallbackLedgerId: _currentLedgerId,
       ),
     );
   }
 
   Widget _empty() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('🏦', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 16),
-            Text('还没有账户',
-                style:
-                    TextStyle(color: AppColors.text2, fontSize: 16)),
-            const SizedBox(height: 6),
-            Text('点击右上角 + 添加账户',
-                style:
-                    TextStyle(color: AppColors.text2, fontSize: 13)),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => _showAccountSheet(context),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加账户'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🏦', style: TextStyle(fontSize: 56)),
+              const SizedBox(height: 16),
+              Text('还没有账户',
+                  style:
+                      TextStyle(color: AppColors.text2, fontSize: 16)),
+              const SizedBox(height: 6),
+              Text('点击右上角 + 添加账户',
+                  style:
+                      TextStyle(color: AppColors.text2, fontSize: 13)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => _showAccountSheet(context),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('添加账户'),
+              ),
+            ],
+          ),
         ),
       );
 }
@@ -382,7 +388,7 @@ class _AccountTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '¥${balValue.toStringAsFixed(2)}',
+                        fmtMoney(balValue),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -484,7 +490,7 @@ class _AccountTile extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 11, color: AppColors.text2)),
             const SizedBox(width: 4),
-            Text('¥${bill.toStringAsFixed(2)}',
+            Text(fmtMoney(bill),
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -530,11 +536,11 @@ class _AccountTile extends StatelessWidget {
             runSpacing: 2,
             children: [
               if (unpaid > 0)
-                _kv('未还', '¥${unpaid.toStringAsFixed(2)}',
+                _kv('未还', fmtMoney(unpaid),
                     color: color),
               if (paid > 0 && unpaid > 0)
-                _kv('已还', '¥${paid.toStringAsFixed(2)}'),
-              if (ongoing > 0) _kv('未出账', '¥${ongoing.toStringAsFixed(2)}'),
+                _kv('已还', fmtMoney(paid)),
+              if (ongoing > 0) _kv('未出账', fmtMoney(ongoing)),
               if (i.dueDate != null)
                 _kv('还款日', _md(i.dueDate!)),
             ],
@@ -589,7 +595,7 @@ class _AccountTile extends StatelessWidget {
               Text('月供 ',
                   style: TextStyle(
                       fontSize: 11, color: AppColors.text2)),
-              Text('¥${i.monthlyPayment!.toStringAsFixed(2)}',
+              Text(fmtMoney(i.monthlyPayment!),
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -613,12 +619,12 @@ class _AccountTile extends StatelessWidget {
               children: [
                 if (account.loanPrincipal != null)
                   _kv('本金',
-                      '¥${account.loanPrincipal!.toStringAsFixed(0)}'),
+                      fmtMoneyInt(account.loanPrincipal!)),
                 if ((i.interestRate ?? 0) > 0)
                   _kv('年利率', '${i.interestRate!.toStringAsFixed(2)}%'),
                 if ((i.monthlyInterest ?? 0) > 0)
                   _kv('月息 ≈',
-                      '¥${i.monthlyInterest!.toStringAsFixed(0)}'),
+                      fmtMoneyInt(i.monthlyInterest!)),
               ],
             ),
           ],
@@ -639,7 +645,7 @@ class _AccountTile extends StatelessWidget {
             size: 14, color: AppColors.income),
         const SizedBox(width: 4),
         Text(
-          '每月自动入账 ¥${(i.amount ?? 0).toStringAsFixed(0)}',
+          '每月自动入账 ${fmtMoneyInt((i.amount ?? 0))}',
           style: TextStyle(
               fontSize: 12,
               color: AppColors.text1,
@@ -676,9 +682,10 @@ class _AccountTile extends StatelessWidget {
 
 // ── Add/Edit account bottom sheet ─────────────────────────────
 class _AccountSheet extends StatefulWidget {
-  const _AccountSheet({this.account, required this.onSaved});
+  const _AccountSheet({this.account, required this.onSaved, this.fallbackLedgerId});
   final Account? account;
   final VoidCallback onSaved;
+  final String? fallbackLedgerId;
 
   @override
   State<_AccountSheet> createState() => _AccountSheetState();
@@ -707,6 +714,8 @@ class _AccountSheetState extends State<_AccountSheet> {
   bool _isShared = false;
   bool _saving = false;
   Map<String, String?> _errors = {};
+  /// 顶部条幅错误（替代被弹窗挡住的 SnackBar）
+  String? _banner;
   /// 新建从"选类型"开始；编辑从"表单"开始
   late _Step _step;
 
@@ -1043,7 +1052,7 @@ class _AccountSheetState extends State<_AccountSheet> {
           Expanded(
             child: Text(
               preview != null
-                  ? '按当前设置，月供约 ¥${preview.toStringAsFixed(2)}'
+                  ? '按当前设置，月供约 ${fmtMoney(preview)}'
                   : '填完上面 5 项，会自动算出每月还款',
               style: TextStyle(
                   fontSize: 12,
@@ -1400,14 +1409,36 @@ class _AccountSheetState extends State<_AccountSheet> {
     final repaymentMethod =
         _type == 'DEBT' ? _repaymentMethod : null;
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _banner = null;
+    });
     try {
       // 找到目标账本 id —— 编辑时用现有账户的；新建用当前账本
       final ledgerId = widget.account?.ledgerId ??
-          await AuthService.getCurrentLedgerId() ?? '';
-      if (ledgerId.isEmpty || !KeyChain.instance.hasDek(ledgerId)) {
-        _toast('账本密钥尚未就绪，请稍后重试');
+          await AuthService.getCurrentLedgerId() ??
+          widget.fallbackLedgerId ??
+          '';
+      if (ledgerId.isEmpty) {
+        setState(() {
+          _banner = '请先回到首页选择一个账本';
+          _saving = false;
+        });
         return;
+      }
+      // 主动补救一次：app 启动那波拉 DEK 可能撞上服务挂掉，导致内存里没缓存
+      if (!KeyChain.instance.hasDek(ledgerId)) {
+        final ok = await KeyChain.instance.ensureDek(
+          ledgerId,
+          ApiService.getMyDeks,
+        );
+        if (!ok) {
+          setState(() {
+            _banner = '账本密钥还没就绪。请下拉刷新或重新登录后再试。';
+            _saving = false;
+          });
+          return;
+        }
       }
       final dekVer = KeyChain.instance.dekVersionOf(ledgerId) ?? 1;
       final nameCipher = KeyChain.instance.encryptText(
@@ -1454,8 +1485,10 @@ class _AccountSheetState extends State<_AccountSheet> {
       if (!mounted) return;
       Navigator.pop(context);
       widget.onSaved();
-    } catch (_) {
-      _toast('保存失败，请重试');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _banner = '保存失败：$e');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1829,6 +1862,28 @@ class _AccountSheetState extends State<_AccountSheet> {
           ),
         ),
         // 保存按钮
+        if (_banner != null)
+          Container(
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              border: Border.all(color: Colors.red.shade200),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _banner!,
+                    style: TextStyle(fontSize: 13, color: Colors.red.shade800),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Padding(
           padding: EdgeInsets.fromLTRB(20, 8, 20, bottomInset + 20),
           child: SizedBox(
@@ -1859,7 +1914,8 @@ class _AccountSheetState extends State<_AccountSheet> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return IntrinsicHeight(
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -1897,6 +1953,7 @@ class _AccountSheetState extends State<_AccountSheet> {
           ),
         ]),
       ),
+    ),
     );
   }
 }

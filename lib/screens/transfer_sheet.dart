@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../models/account.dart';
+import '../models/bill.dart';
 import '../services/api_service.dart';
 
 /// 账户间转账底部弹窗
@@ -242,7 +243,7 @@ class _TransferSheetState extends State<TransferSheet> {
           ),
           if (account != null)
             Text(
-              '¥${account.balance.toStringAsFixed(2)}',
+              fmtMoney(account.balance),
               style: TextStyle(
                 fontSize: 13,
                 color: AppColors.text2,
@@ -292,7 +293,7 @@ class _TransferSheetState extends State<TransferSheet> {
                   title: Text(a.name),
                   subtitle: Text(a.typeLabel,
                       style: const TextStyle(fontSize: 12)),
-                  trailing: Text('¥${a.balance.toStringAsFixed(2)}',
+                  trailing: Text(fmtMoney(a.balance),
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
