@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/glass.dart';
 import '../services/api_service.dart';
 import '../crypto/key_chain.dart';
 import '../models/recurring.dart';
@@ -160,8 +161,9 @@ class _RecurringScreenState extends State<RecurringScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('周期账单'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '周期账单',
         bottom: TabBar(
           controller: _tab,
           tabs: [
@@ -191,12 +193,14 @@ class _RecurringScreenState extends State<RecurringScreen>
           ],
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tab,
-              children: [_buildList(), _buildCandidates()],
-            ),
+      body: AuraBackground(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                controller: _tab,
+                children: [_buildList(), _buildCandidates()],
+              ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditSheet(),
         child: const Icon(Icons.add),

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../models/ai_import.dart';
@@ -318,10 +319,8 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('AI 智能导入'),
-      ),
+      backgroundColor: Colors.transparent,
+      appBar: const AuraAppBar(title: 'AI 智能导入'),
       floatingActionButton: FloatingActionButton(
         onPressed: _uploading ? null : _pickAndUpload,
         tooltip: _uploading ? '上传中…' : '上传文件',
@@ -334,20 +333,22 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
               )
             : const Icon(Icons.upload_file_rounded, size: 26),
       ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : _items.isEmpty
-              ? _empty()
-              : RefreshIndicator(
-                  onRefresh: _refresh,
-                  color: AppColors.primary,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) => _card(_items[i]),
+      body: AuraBackground(
+        child: _loading
+            ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : _items.isEmpty
+                ? _empty()
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    color: AppColors.primary,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                      itemCount: _items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) => _card(_items[i]),
+                    ),
                   ),
-                ),
+      ),
     );
   }
 

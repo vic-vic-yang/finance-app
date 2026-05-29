@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../models/chat_message.dart';
@@ -157,24 +158,27 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('🤖 财记助手')),
-      body: Column(
-        children: [
-          Expanded(
-            child: _turns.isEmpty
-                ? _empty()
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: _turns.length + (_busy ? 1 : 0),
-                    itemBuilder: (_, i) {
-                      if (i == _turns.length) return _thinkingBubble();
-                      return _bubble(_turns[i]);
-                    },
-                  ),
-          ),
-          _inputBar(),
-        ],
+      backgroundColor: Colors.transparent,
+      appBar: const AuraAppBar(title: '财记助手'),
+      body: AuraBackground(
+        child: Column(
+          children: [
+            Expanded(
+              child: _turns.isEmpty
+                  ? _empty()
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      itemCount: _turns.length + (_busy ? 1 : 0),
+                      itemBuilder: (_, i) {
+                        if (i == _turns.length) return _thinkingBubble();
+                        return _bubble(_turns[i]);
+                      },
+                    ),
+            ),
+            _inputBar(),
+          ],
+        ),
       ),
     );
   }

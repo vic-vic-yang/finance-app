@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/glass.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
 import '../models/budget.dart';
@@ -227,8 +228,9 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('📊 月报'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '月报',
         actions: [
           IconButton(
             tooltip: '重新生成',
@@ -237,7 +239,8 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: AuraBackground(
+        child: Column(
         children: [
           SegmentedButton<int>(
             segments: const [
@@ -267,6 +270,7 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
                     : _content(),
           ),
         ],
+        ),
       ),
     );
   }

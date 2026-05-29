@@ -6,6 +6,8 @@ import '../models/account.dart';
 import '../models/savings_goal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../widgets/glass.dart';
+import 'profile_screen.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -92,165 +94,403 @@ class _GoalsScreenState extends State<GoalsScreen> {
     }
   }
 
+  /// 「Quiet Luxury」渐变色板 —— 每个目标卡按序取一套，代替参考设计里的实拍图
+  static const List<List<Color>> _gradients = [
+    [Color(0xFF1B3022), Color(0xFF3C6049)], // 森林绿
+    [Color(0xFF2E3A40), Color(0xFF53666E)], // 雾岩灰
+    [Color(0xFF5C4A40), Color(0xFF8C7263)], // 暖陶褐
+    [Color(0xFF34453C), Color(0xFF5E7866)], // 深苔绿
+    [Color(0xFF2A2E3A), Color(0xFF474D60)], // 暮霭蓝
+    [Color(0xFF4A3B4A), Color(0xFF6E5670)], // 紫罗兰灰
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('储蓄目标')),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '储蓄目标',
+        avatarTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: IconButton(
+              tooltip: '新建目标',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+              icon: Icon(Icons.add_rounded, color: AppColors.primary, size: 26),
+              onPressed: () => _openEdit(),
+            ),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _goals.isEmpty
-              ? _empty()
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [for (final g in _goals) _goalCard(g)],
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+                children: [
+                  _header(),
+                  const SizedBox(height: 24),
+                  if (_goals.isEmpty)
+                    _emptyHint()
+                  else
+                    for (var i = 0; i < _goals.length; i++) ...[
+                      _goalCard(_goals[i], i),
+                      const SizedBox(height: 18),
+                    ],
+                  _addCard(),
+                  const SizedBox(height: 36),
+                  _strategiesSection(),
+                ],
+              ),
+            ),
+    );
+  }
+
+  // ── 顶部 Hero 头部：大标题 + 副文案 + 「已存合计」玻璃药丸 ──────
+  Widget _header() {
+    final totalSaved =
+        _goals.fold<double>(0, (s, g) => s + g.currentSaved);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '勾勒你想要的生活，一笔一笔，把未来攒进现实。',
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: AppColors.text2,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GlassCard(
+          radius: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('已存合计',
+                  style: TextStyle(
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text2)),
+              const SizedBox(width: 12),
+              Text(
+                '¥${totalSaved.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyHint() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          '还没有储蓄目标，点下面的卡片开启第一段旅程。',
+          style: TextStyle(fontSize: 14, color: AppColors.text2),
+        ),
+      );
+
+  // ── 目标卡：渐变大卡 + 底部悬浮玻璃信息面板 + 发光进度条 ─────────
+  Widget _goalCard(SavingsGoal g, int index) {
+    final pct = (g.progress * 100).clamp(0, 999);
+    final done = g.progress >= 1;
+    final p = g.progress.clamp(0.0, 1.0);
+    final grad = _gradients[index % _gradients.length];
+
+    final dl = g.deadline;
+    final accName = g.accountName();
+    final subtitle = accName != null
+        ? '绑定 $accName'
+        : dl != null
+            ? '截止 ${DateFormat('yyyy年M月d日').format(dl)}'
+            : (done ? '目标已达成 🎉' : '持续储蓄中');
+
+    return GestureDetector(
+      onTap: () => _openEdit(init: g),
+      onLongPress: () => _delete(g),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: AppTheme.ambientShadow(
+              opacity: 0.16, blur: 36, offset: const Offset(0, 16)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            height: 196,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: grad,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Stack(
+              children: [
+                // 角落大字 emoji，做底纹
+                Positioned(
+                  top: 14,
+                  right: 18,
+                  child: Text(
+                    g.icon ?? '🎯',
+                    style: TextStyle(
+                      fontSize: 64,
+                      color: Colors.white.withOpacity(0.16),
+                    ),
                   ),
                 ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openEdit(),
-        child: const Icon(Icons.add),
+                if (done)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.22),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.check_circle,
+                            size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text('已达成',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                      ]),
+                    ),
+                  ),
+                // 底部悬浮玻璃信息面板
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: GlassCard(
+                    radius: 20,
+                    blur: 20,
+                    opacity: 0.62,
+                    tint: Colors.white,
+                    showShadow: false,
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          g.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A2C20),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF4B5A50),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: RichText(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '¥${g.currentSaved.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1A2C20),
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text:
+                                          ' / ¥${g.targetAmount.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF4B5A50),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${pct.toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1B3022),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // 发光进度条
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF1B3022)
+                                    .withOpacity(0.22 * p),
+                                blurRadius: 12,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: p,
+                              minHeight: 8,
+                              backgroundColor:
+                                  const Color(0xFF1B3022).withOpacity(0.12),
+                              valueColor: const AlwaysStoppedAnimation(
+                                  Color(0xFF1B3022)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _empty() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(36),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🎯', style: TextStyle(fontSize: 56)),
-              const SizedBox(height: 12),
-              Text(
-                '还没有储蓄目标\n点 + 设一个，比如"半年存够2万"',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ],
+  // ── 虚线「新建目标」卡 ─────────────────────────────────────────
+  Widget _addCard() {
+    return GestureDetector(
+      onTap: () => _openEdit(),
+      child: Container(
+        height: 150,
+        decoration: BoxDecoration(
+          color: AppColors.surface.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: AppColors.primary.withOpacity(0.28),
+            width: 1.4,
           ),
         ),
-      );
-
-  Widget _goalCard(SavingsGoal g) {
-    final pct = (g.progress * 100).clamp(0, 999);
-    final done = g.progress >= 1;
-    final color = done
-        ? Colors.green
-        : g.progress >= 0.7
-            ? Colors.blue
-            : Colors.orange;
-    final dl = g.deadline;
-    final dlText = dl == null
-        ? ''
-        : '截止 ${DateFormat('yyyy-MM-dd').format(dl)}';
-    final accName = g.accountName();
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        onTap: () => _openEdit(init: g),
-        onLongPress: () => _delete(g),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(g.icon ?? '🎯', style: const TextStyle(fontSize: 22)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(g.name,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
-                        if (dlText.isNotEmpty)
-                          Text(dlText,
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.grey.shade600)),
-                      ],
-                    ),
-                  ),
-                  if (done)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Icon(Icons.check_circle,
-                          color: Colors.green, size: 22),
-                    ),
-                ],
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+                boxShadow: AppTheme.ambientShadow(
+                    opacity: 0.22, blur: 18, offset: const Offset(0, 6)),
               ),
-              if (accName != null) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.account_balance_wallet,
-                        size: 13, color: Colors.grey.shade500),
-                    const SizedBox(width: 4),
-                    Text(
-                      '绑定：$accName',
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                    ),
-                    if (g.account?.balanceVisible == true) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '(余额 ¥${g.account!.balance.toStringAsFixed(0)})',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.grey.shade500),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '¥${g.currentSaved.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    ' / ¥${g.targetAmount.toStringAsFixed(0)}',
-                    style:
-                        TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${pct.toStringAsFixed(0)}%',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: g.progress.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation(color),
-                ),
-              ),
-              if (g.etaDays != null && !done) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '按目前速度，预计还需 ${g.etaDays} 天达成',
-                  style:
-                      TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ],
-          ),
+              child: Icon(Icons.add_rounded,
+                  color: AppColors.onPrimary, size: 28),
+            ),
+            const SizedBox(height: 12),
+            Text('描绘一个目标',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary)),
+            const SizedBox(height: 2),
+            Text('开启新的旅程',
+                style: TextStyle(fontSize: 13, color: AppColors.text2)),
+          ],
         ),
+      ),
+    );
+  }
+
+  // ── 储蓄策略小贴士（静态内容，呼应参考设计的 Curated Strategies）──
+  Widget _strategiesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('储蓄策略',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.4,
+              color: AppColors.primary,
+            )),
+        const SizedBox(height: 16),
+        _tipCard(
+          icon: Icons.auto_awesome_outlined,
+          title: '先存后花',
+          body: '发薪当天先把目标金额转入绑定账户，剩下的再安排日常开销。',
+        ),
+        const SizedBox(height: 12),
+        _tipCard(
+          icon: Icons.shield_outlined,
+          title: '专款专用',
+          body: '给每个目标绑定独立账户，余额一目了然，不会被日常消费稀释。',
+        ),
+        const SizedBox(height: 12),
+        _tipCard(
+          icon: Icons.trending_up_rounded,
+          title: '小步快跑',
+          body: '把大目标拆成月度小目标，进度条每月前进一点，更容易坚持。',
+        ),
+      ],
+    );
+  }
+
+  Widget _tipCard({
+    required IconData icon,
+    required String title,
+    required String body,
+  }) {
+    return GlassCard(
+      radius: 22,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.primary, size: 26),
+          const SizedBox(height: 14),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text1)),
+          const SizedBox(height: 6),
+          Text(body,
+              style: TextStyle(
+                  fontSize: 13.5, height: 1.5, color: AppColors.text2)),
+        ],
       ),
     );
   }

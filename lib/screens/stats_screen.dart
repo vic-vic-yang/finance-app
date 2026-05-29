@@ -5,6 +5,8 @@ import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
+import '../widgets/glass.dart';
+import 'profile_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -181,8 +183,13 @@ class _StatsScreenState extends State<StatsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('统计'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '统计',
+        avatarTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -190,7 +197,7 @@ class _StatsScreenState extends State<StatsScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(44),
+          preferredSize: const Size.fromHeight(50),
           child: _dateNav(),
         ),
       ),
@@ -271,16 +278,15 @@ class _StatsScreenState extends State<StatsScreen>
 
   // ── Date navigator ────────────────────────────────────────────
   Widget _dateNav() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
         child: Row(children: [
           IconButton(
             onPressed: _prev,
             icon: Icon(Icons.chevron_left_rounded,
                 color: AppColors.text2),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           Expanded(
             child: Text(
               _periodLabel,
@@ -291,13 +297,12 @@ class _StatsScreenState extends State<StatsScreen>
                   color: AppColors.text1),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           IconButton(
             onPressed: _canGoNext ? _next : null,
             icon: Icon(Icons.chevron_right_rounded,
                 color: _canGoNext ? AppColors.text2 : AppColors.border),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
           ),
         ]),
       );
@@ -307,13 +312,9 @@ class _StatsScreenState extends State<StatsScreen>
     final hasShared = _assetShared.abs() > 0.01;
     final hasOthers = _assetOthers.abs() > 0.01;
     final isFamily = hasShared || hasOthers;
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -518,13 +519,9 @@ class _StatsScreenState extends State<StatsScreen>
     final maxAmount = _memberStats
         .map((m) => m.income + m.expense)
         .fold<double>(0, (a, b) => a > b ? a : b);
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -703,13 +700,9 @@ class _StatsScreenState extends State<StatsScreen>
     final stats = _currentStats;
     final total = _currentTotal;
 
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Row(
         children: [
           SizedBox(
@@ -805,12 +798,9 @@ class _StatsScreenState extends State<StatsScreen>
     final total = _currentTotal > 0 ? _currentTotal : 1;
     final color = _tab == 0 ? AppColors.expense : AppColors.income;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
+    return GlassCard(
+      radius: 16,
+      padding: EdgeInsets.zero,
       child: Column(
         children: stats.asMap().entries.map((e) {
           final i = e.key;

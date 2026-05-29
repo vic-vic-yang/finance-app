@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
@@ -357,8 +358,9 @@ class _LedgersScreenState extends State<LedgersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('账本管理'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '账本管理',
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.add_rounded),
@@ -391,21 +393,23 @@ class _LedgersScreenState extends State<LedgersScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              color: AppColors.primary,
-              onRefresh: _load,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-                itemCount: _ledgers.length,
-                itemBuilder: (_, i) {
-                  final l = _ledgers[i];
-                  return _ledgerCard(l);
-                },
+      body: AuraBackground(
+        child: _loading
+            ? Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: _load,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                  itemCount: _ledgers.length,
+                  itemBuilder: (_, i) {
+                    final l = _ledgers[i];
+                    return _ledgerCard(l);
+                  },
+                ),
               ),
-            ),
+      ),
     );
   }
 

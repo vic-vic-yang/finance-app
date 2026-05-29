@@ -8,6 +8,7 @@ import '../models/category.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/recents_service.dart';
+import 'ai_imports_screen.dart';
 
 class AddBillScreen extends StatefulWidget {
   const AddBillScreen({super.key, this.bill});
@@ -551,17 +552,28 @@ class _AddBillScreenState extends State<AddBillScreen>
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-                // 占位维持标题居中
-                const SizedBox(width: 48),
+                IconButton(
+                  icon: const Icon(Icons.file_upload_rounded,
+                      color: Colors.white70, size: 22),
+                  tooltip: 'AI 智能导入',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AiImportsScreen()),
+                    );
+                  },
+                ),
               ]),
             ),
             TabBar(
               controller: _tabCtrl,
-              indicatorColor: Colors.white,
-              indicatorWeight: 3,
+              indicator: const UnderlineTabIndicator(
+                borderSide: BorderSide(color: Colors.white70, width: 2.5),
+              ),
               indicatorSize: TabBarIndicatorSize.label,
               labelColor: Colors.white,
-              unselectedLabelColor: Colors.white54,
+              unselectedLabelColor: Colors.white60,
               labelStyle: const TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w600),
               unselectedLabelStyle: const TextStyle(fontSize: 15),

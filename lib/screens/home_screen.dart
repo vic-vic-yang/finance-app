@@ -13,12 +13,14 @@ import '../models/insight.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
 import 'budgets_screen.dart';
 import 'ledgers_screen.dart';
+import 'profile_screen.dart';
 import 'recurring_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -145,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: _load,
@@ -238,21 +241,35 @@ class _HomeScreenState extends State<HomeScreen>
     final greeting = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
     final l = _currentLedger;
     return SliverAppBar(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       // 始终钉在顶部，不随滚动消失
       pinned: true,
-      titleSpacing: 20,
+      titleSpacing: 12,
       toolbarHeight: 64,
+      leadingWidth: 64,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 20),
+        child: Center(
+          child: ProfileAvatar(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            ),
+          ),
+        ),
+      ),
       actions: [
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
-          IconButton(
-            tooltip: '财记助手',
-            icon: const Text('🤖', style: TextStyle(fontSize: 22)),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChatScreen(ledgerId: _currentLedger!.id),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: AiButton(
+              tooltip: '财记助手',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(ledgerId: _currentLedger!.id),
+                ),
               ),
             ),
           ),
@@ -483,6 +500,11 @@ class _HomeScreenState extends State<HomeScreen>
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
+        boxShadow: AppTheme.ambientShadow(
+          opacity: 0.18,
+          blur: 36,
+          offset: const Offset(0, 16),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -766,22 +788,14 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Material(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const BudgetsScreen()),
-          ),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+        ),
+        child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
@@ -867,8 +881,6 @@ class _HomeScreenState extends State<HomeScreen>
                 ]),
               ],
             ),
-          ),
-        ),
       ),
     );
   }

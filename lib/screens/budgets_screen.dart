@@ -6,6 +6,8 @@ import '../models/budget.dart';
 import '../models/category.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
+import '../widgets/glass.dart';
+import 'profile_screen.dart';
 
 /// 预算页面 —— 重新设计：
 /// - 只按 *分类* 设预算，"总预算" = 所有分类预算之和（自动算）
@@ -189,8 +191,13 @@ class _BudgetsScreenState extends State<BudgetsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('预算管理'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '预算管理',
+        avatarTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        ),
         bottom: TabBar(
           controller: _tab,
           indicatorColor: AppColors.primary,
@@ -672,13 +679,9 @@ class _BudgetsScreenState extends State<BudgetsScreen>
       spentSpots.add(FlSpot(i.toDouble(), _history[i].totalSpent));
     }
 
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -841,13 +844,9 @@ class _BudgetsScreenState extends State<BudgetsScreen>
   Widget _historyOverview() {
     // 取最近一期（不含本期；本期还没结束，纯参考）
     // 列出每期 1 行：日期 + 预算 + 实际 + 差额
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -980,13 +979,9 @@ class _BudgetsScreenState extends State<BudgetsScreen>
       );
     }
 
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

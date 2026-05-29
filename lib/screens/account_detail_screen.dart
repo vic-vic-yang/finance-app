@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../widgets/glass.dart';
 import '../models/account.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
@@ -227,24 +228,31 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   Widget build(BuildContext context) {
     if (_loadingAccount && _account == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('账户详情')),
-        body: Center(
-            child: CircularProgressIndicator(color: AppColors.primary)),
+        backgroundColor: Colors.transparent,
+        appBar: const AuraAppBar(title: '账户详情'),
+        body: AuraBackground(
+          child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary)),
+        ),
       );
     }
     if (_account == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('账户详情')),
-        body: Center(
-          child: Text('账户不存在或没有访问权限',
-              style: TextStyle(color: AppColors.text2)),
+        backgroundColor: Colors.transparent,
+        appBar: const AuraAppBar(title: '账户详情'),
+        body: AuraBackground(
+          child: Center(
+            child: Text('账户不存在或没有访问权限',
+                style: TextStyle(color: AppColors.text2)),
+          ),
         ),
       );
     }
     final a = _account!;
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        titleWidget: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(a.typeEmoji, style: const TextStyle(fontSize: 18)),
@@ -252,12 +260,16 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             Flexible(
               child: Text(a.name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary)),
             ),
           ],
         ),
       ),
-      body: RefreshIndicator(
+      body: AuraBackground(
+        child: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () async {
           await _loadAccount();
@@ -304,6 +316,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
               _billsSliver(),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
+        ),
         ),
       ),
     );

@@ -8,16 +8,23 @@ class ThemePalette {
   final Color seed;
   /// 单色模式：primary 不固定，跟随亮/暗模式取 text1（shadcn 风格）
   final bool isMono;
-  const ThemePalette(this.name, this.emoji, this.seed, {this.isMono = false});
+  /// Aura Finance 模式：light 用 Forest Green，dark 用 Sage，自带"Quiet Luxury"配色
+  final bool isAura;
+  const ThemePalette(this.name, this.emoji, this.seed,
+      {this.isMono = false, this.isAura = false});
 }
 
 class ThemeService {
   ThemeService._();
   static final ThemeService instance = ThemeService._();
 
-  /// 8 套主题（默认第 0 个：无色 shadcn 风格）
+  /// 9 套主题（默认第 0 个：Aura Finance "Quiet Luxury"）
   /// 索引存 SharedPreferences，**改顺序会让老用户主题错位**，慎重
+  /// —— Aura 加在索引 0，把原有 8 套整体后移一位。已有用户的索引会跟着错位一次，
+  ///    但因为整体观感升级了，这是有意为之；老用户首次启动只会看到"主题更新"
+  ///    （除非他们改回偏好）。
   static const List<ThemePalette> palettes = [
+    ThemePalette('Aura · 雅致', '🌿', Color(0xFF1B3022), isAura: true),
     ThemePalette('无色', '⚫', Color(0xFF101828), isMono: true),
     ThemePalette('星耀紫', '💜', Color(0xFF635BFF)),
     ThemePalette('莱姆绿', '🟢', Color(0xFF6ECC54)),

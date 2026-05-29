@@ -8,11 +8,11 @@ import '../models/ledger.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
 import 'accounts_screen.dart';
 import 'ai_imports_screen.dart';
 import 'bills_screen.dart';
 import 'chat_screen.dart';
-import 'goals_screen.dart';
 import 'monthly_report_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
@@ -112,9 +112,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      backgroundColor: Colors.transparent,
+      appBar: const AuraAppBar(title: '我的'),
+      body: AuraBackground(
+        child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
           _userCard(),
           const SizedBox(height: 16),
@@ -155,15 +157,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const RecurringScreen()),
-            ),
-          ),
-          _tile(
-            icon: '🎯',
-            title: '储蓄目标',
-            subtitle: '设个目标，AI 帮你看进度',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const GoalsScreen()),
             ),
           ),
           _tile(
@@ -217,6 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           const SizedBox(height: 20),
           _logoutBtn(),
         ],
+        ),
       ),
     );
   }
@@ -236,6 +230,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(20),
+          boxShadow: AppTheme.ambientShadow(
+            opacity: 0.18,
+            blur: 36,
+            offset: const Offset(0, 16),
+          ),
         ),
         child: Row(children: [
           Container(
@@ -361,19 +360,14 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// 当前账本 banner — 显示当前账本 + 一键去管理/切换
   Widget _ledgerBanner() {
     final l = _currentLedger;
-    return GestureDetector(
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const LedgersScreen()),
       ).then((_) => _load()),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(children: [
+      child: Row(children: [
           Container(
             width: 44,
             height: 44,
@@ -433,7 +427,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           Icon(Icons.chevron_right_rounded, color: AppColors.text2),
         ]),
-      ),
     );
   }
 
@@ -452,13 +445,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     String? subtitle,
     required VoidCallback onTap,
   }) =>
-      Container(
+      GlassCard(
         margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
+        radius: 14,
+        padding: EdgeInsets.zero,
         child: ListTile(
           onTap: onTap,
           shape: RoundedRectangleBorder(

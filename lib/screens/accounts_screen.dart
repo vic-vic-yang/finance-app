@@ -8,6 +8,7 @@ import '../models/bill.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
 
 double math_pow(double a, double b) => math.pow(a, b).toDouble();
@@ -72,7 +73,9 @@ class _AccountsScreenState extends State<AccountsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text('账户'),
         actions: [
           IconButton(
@@ -82,14 +85,16 @@ class _AccountsScreenState extends State<AccountsScreen>
           ),
         ],
       ),
-      body: _loading
-          ? Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              color: AppColors.primary,
-              onRefresh: _load,
-              child: _accounts.isEmpty ? _empty() : _list(),
-            ),
+      body: AuraBackground(
+        child: _loading
+            ? Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: _load,
+                child: _accounts.isEmpty ? _empty() : _list(),
+              ),
+      ),
     );
   }
 
@@ -249,6 +254,7 @@ class _AccountsScreenState extends State<AccountsScreen>
 
   Widget _empty() => Center(
         child: Padding(
+          // Aura 风：充分留白，移动端两侧至少 24
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -259,14 +265,19 @@ class _AccountsScreenState extends State<AccountsScreen>
                   style:
                       TextStyle(color: AppColors.text2, fontSize: 16)),
               const SizedBox(height: 6),
-              Text('点击右上角 + 添加账户',
+              Text('点击下方按钮，添加你的第一个账户',
                   style:
                       TextStyle(color: AppColors.text2, fontSize: 13)),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () => _showAccountSheet(context),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('添加账户'),
+              const SizedBox(height: 28),
+              // 用 SizedBox 锁定宽度，避免被 ElevatedButton 主题里
+              // minimumSize: Size(infinity, 52) 撑到屏幕边
+              SizedBox(
+                width: 220,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showAccountSheet(context),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('添加账户'),
+                ),
               ),
             ],
           ),

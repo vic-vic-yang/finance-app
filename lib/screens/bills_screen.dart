@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
@@ -220,20 +221,23 @@ class _BillsScreenState extends State<BillsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('账单'),
+      backgroundColor: Colors.transparent,
+      appBar: AuraAppBar(
+        title: '账单',
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(_isSharedLedger ? 92 : 92),
           child: _filterBar(),
         ),
       ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              color: AppColors.primary,
-              onRefresh: () => _load(refresh: true),
-              child: _bills.isEmpty ? _empty() : _list(),
-            ),
+      body: AuraBackground(
+        child: _loading
+            ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: () => _load(refresh: true),
+                child: _bills.isEmpty ? _empty() : _list(),
+              ),
+      ),
     );
   }
 
