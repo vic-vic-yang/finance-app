@@ -55,15 +55,16 @@ class ApiService {
 
   static Future<Map<String, dynamic>> _post(
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
     final res = await _client
         .post(
           Uri.parse('$baseUrl$path'),
           headers: await _headers(),
           body: jsonEncode(body),
         )
-        .timeout(_kRequestTimeout);
+        .timeout(timeout ?? _kRequestTimeout);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -532,9 +533,14 @@ class ApiService {
   /// 客户端把加密后的 bills 回填 → 后端入库 + 标记 done
   static Future<Map<String, dynamic>> aiApplyImport(
     String id,
-    List<Map<String, dynamic>> bills,
-  ) =>
-      _post('/ai/imports/$id/apply', {'bills': bills});
+    List<Map<String, dynamic>> bills, {
+    List<Map<String, dynamic>> transfers = const [],
+  }) =>
+      // 后端是逐条事务写入，账单多时耗时较长，给足超时（默认 20s 会卡住大批量）
+      _post('/ai/imports/$id/apply', {
+        'bills': bills,
+        if (transfers.isNotEmpty) 'transfers': transfers,
+      }, timeout: const Duration(seconds: 120));
 
   // ─── 周期账单 / 订阅管家 ───────────────────────────────────
   static Future<Map<String, dynamic>> recurringCandidates() =>
