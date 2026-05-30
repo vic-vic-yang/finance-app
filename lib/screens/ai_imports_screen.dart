@@ -12,6 +12,9 @@ import '../models/ai_import.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/pending_dek_resolver.dart';
+import '../services/funding_matcher.dart';
+import '../services/payment_method_map.dart';
 
 /// AI 智能导入：上传文件让 AI 解析为账单
 class AiImportsScreen extends StatefulWidget {
@@ -29,7 +32,12 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
   String? _ledgerId;
   Timer? _poll;
   /// 已经触发过自动入库的 importId（防止 polling 重复触发）
-  final Set<String> _autoApplied = {};
+  /// 正在入库中的导入 id（防并发重入）
+  final Set<String> _applyingIds = {};
+  /// 入库失败的导入 id → 原因（卡片上展示 + 提供手动「重试」，不再无限自动重试）
+  final Map<String, String> _applyErr = {};
+  /// 去重后没有新数据的导入 id（全部和已有账单重复，无需入库）
+  final Set<String> _noNewData = {};
 
   @override
   void initState() {
@@ -95,26 +103,47 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
     } catch (_) {}
   }
 
-  /// 对所有 review_ready 且未触发过的导入，自动加密 + apply 入库
+  /// 对所有 review_ready 且未在处理/未失败的导入，自动加密 + apply 入库
   Future<void> _maybeAutoApply() async {
     for (final item in _items) {
       if (item.status != AiImportStatus.reviewReady) continue;
       if (!item.hasDrafts) continue;
-      if (_autoApplied.contains(item.id)) continue;
-      _autoApplied.add(item.id);
-      // 异步推进，不阻塞 UI
+      if (_applyingIds.contains(item.id)) continue; // 正在处理
+      if (_applyErr.containsKey(item.id)) continue;  // 失败的等用户手动重试
+      if (_noNewData.contains(item.id)) continue;    // 全部重复，无需入库
       unawaited(_autoApplyOne(item));
     }
   }
 
   Future<void> _autoApplyOne(AiImport item) async {
+    if (_applyingIds.contains(item.id)) return;
+    if (mounted) {
+      setState(() {
+        _applyingIds.add(item.id);
+        _applyErr.remove(item.id); // 重试时先清掉旧错误
+      });
+    } else {
+      _applyingIds.add(item.id);
+    }
+
+    String? failReason;
+    bool noNew = false;
     try {
       // 1) 拉草稿
       final res = await ApiService.aiGetImport(item.id);
       final drafts = (res['drafts'] as List? ?? [])
           .map((d) => AiDraft.fromJson(d as Map<String, dynamic>))
           .toList();
-      if (drafts.isEmpty) return;
+      if (drafts.isEmpty) {
+        // 去重后没有新账单 —— 全部重复。仍要通知后端把状态置完成
+        // （传空 bills 即可），否则后端一直停在 review_ready，
+        // 角标会永远显示「入库中」。
+        await ApiService.aiApplyImport(item.id, const <Map<String, dynamic>>[]);
+        noNew = true;
+        bumpRefresh();
+        _refresh();
+        return;
+      }
 
       // 2) 找该导入用的目标账户 → 拿 ledgerId 给加密用
       Account? acc;
@@ -122,38 +151,193 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         if (a.id == item.accountId) { acc = a; break; }
       }
       acc ??= _accounts.isNotEmpty ? _accounts.first : null;
-      if (acc == null) return;
-      final ledgerId = acc.ledgerId;
-      final dekVer = KeyChain.instance.dekVersionOf(ledgerId) ?? 1;
-      if (!KeyChain.instance.hasDek(ledgerId)) return; // 密钥未就绪
-
-      // 3) 客户端加密 note → 批量 apply
-      final bills = <Map<String, dynamic>>[];
-      for (final d in drafts) {
-        if (d.categoryId.isEmpty || d.accountId.isEmpty) continue;
-        final noteCipher = KeyChain.instance.encryptText(
-          ledgerId: ledgerId,
-          plain: d.note,
-        );
-        bills.add({
-          'accountId': d.accountId,
-          'categoryId': d.categoryId,
-          'type': d.type,
-          'amount': d.amount,
-          'noteCipher': noteCipher,
-          'noteDekVer': dekVer,
-          'date': d.date.toIso8601String(),
-        });
+      if (acc == null) {
+        failReason = '找不到目标账户，请先创建账户';
+        return;
       }
-      if (bills.isEmpty) return;
-      await ApiService.aiApplyImport(item.id, bills);
+      final ledgerId = acc.ledgerId;
+
+      // 密钥未就绪 → 先尝试 rehydrate（可能已被 wrap 好）；仍拿不到才报错
+      if (!KeyChain.instance.hasDek(ledgerId)) {
+        await PendingDekResolver.rehydrate(requireLedgerId: ledgerId);
+      }
+      if (!KeyChain.instance.hasDek(ledgerId)) {
+        failReason = '账本密钥未就绪，切到该账本解锁后点重试';
+        return;
+      }
+      final dekVer = KeyChain.instance.dekVersionOf(ledgerId) ?? 1;
+
+      // 3) 客户端逐草稿解析资金账户 + 拆账单/转账
+      final saved = await PaymentMethodMap.load(acc.ledgerId);
+      final accPairs = _accounts.map((a) => (a.id, a.name)).toList();
+
+      // 先扫一遍，找出未匹配的付款方式
+      final unresolved = <String>{};
+      for (final d in drafts) {
+        final hint = d.fundingHint ?? '';
+        if (hint.isEmpty) continue;
+        final norm = normalizeFundingHint(hint);
+        if (norm.isEmpty) continue;
+        if (matchAccountId(norm, accPairs, saved) == null) unresolved.add(norm);
+      }
+      // 让用户指认未匹配的（记住）
+      if (unresolved.isNotEmpty) {
+        final picks = await _promptFundingMapping(unresolved.toList());
+        if (picks == null) { failReason = '已取消（待指认付款方式）'; return; }
+        await PaymentMethodMap.putAll(acc.ledgerId, picks);
+        saved.addAll(picks);
+      }
+
+      String resolveAccount(AiDraft d) {
+        final hint = d.fundingHint ?? '';
+        if (hint.isEmpty) return item.accountId; // 兜底默认（上传时选的账户）
+        final norm = normalizeFundingHint(hint);
+        if (norm.isEmpty) return item.accountId;
+        return matchAccountId(norm, accPairs, saved) ?? item.accountId;
+      }
+
+      final bills = <Map<String, dynamic>>[];
+      final transfers = <Map<String, dynamic>>[];
+      for (final d in drafts) {
+        final fromId = resolveAccount(d);
+        if (fromId.isEmpty) continue;
+        if (d.direction == 'transfer') {
+          final toId = matchAccountId(
+              normalizeFundingHint(d.counterparty ?? ''), accPairs, saved);
+          if (toId == null || toId == fromId) continue; // 两端凑不齐就跳过
+          transfers.add({
+            'fromAccountId': fromId,
+            'toAccountId': toId,
+            'amount': d.amount,
+          });
+        } else {
+          final cipher = KeyChain.instance
+              .encryptText(ledgerId: acc.ledgerId, plain: d.note);
+          bills.add({
+            'accountId': fromId,
+            'categoryId': d.categoryId,
+            'type': d.direction == 'income' ? 'income' : 'expense',
+            'amount': d.amount,
+            'noteCipher': cipher,
+            'noteDekVer': dekVer,
+            'date': d.date.toIso8601String(),
+            if (d.externalId != null) 'externalId': d.externalId,
+            'source': _sourceOf(item),
+          });
+        }
+      }
+      if (bills.isEmpty && transfers.isEmpty) {
+        await ApiService.aiApplyImport(item.id, const <Map<String, dynamic>>[]);
+        noNew = true;
+        bumpRefresh();
+        _refresh();
+        return;
+      }
+      await ApiService.aiApplyImport(item.id, bills, transfers: transfers);
       // 通知其他屏（账单 / 账户 / 首页）刷新
       bumpRefresh();
       // 刷新列表卡片
       _refresh();
     } catch (e) {
       debugPrint('[ai-auto-apply] $e');
+      failReason = _friendlyApplyErr(e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _applyingIds.remove(item.id);
+          if (noNew) _noNewData.add(item.id);
+          if (failReason != null) _applyErr[item.id] = failReason!;
+        });
+      } else {
+        _applyingIds.remove(item.id);
+        if (noNew) _noNewData.add(item.id);
+      }
     }
+  }
+
+  String _friendlyApplyErr(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('timeout')) return '入库超时（账单较多），点重试继续';
+    if (s.contains('socket') || s.contains('connection')) {
+      return '网络中断，点重试';
+    }
+    return '入库失败，点重试';
+  }
+
+  /// 文件名推断来源渠道
+  String _sourceOf(AiImport item) {
+    final n = item.filename;
+    if (n.contains('支付宝') || n.toLowerCase().contains('alipay')) return 'alipay';
+    if (n.contains('微信') || n.toLowerCase().contains('wechat') ||
+        n.toLowerCase().contains('weixin')) return 'wechat';
+    return 'manual';
+  }
+
+  /// 让用户把未匹配的付款方式各选一个账户。返回 归一key→accountId；取消返回 null。
+  Future<Map<String, String>?> _promptFundingMapping(List<String> keys) async {
+    final picks = <String, String>{};
+    return showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('这些付款方式归到哪个账户？',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600,
+                        color: AppColors.text1)),
+                const SizedBox(height: 4),
+                Text('选好后会记住，下次自动套用',
+                    style: TextStyle(fontSize: 12, color: AppColors.text3)),
+                const SizedBox(height: 12),
+                for (final k in keys)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      Expanded(child: Text(k,
+                          style: TextStyle(fontSize: 14, color: AppColors.text1))),
+                      const SizedBox(width: 12),
+                      DropdownButton<String>(
+                        value: picks[k],
+                        hint: const Text('选账户'),
+                        items: _accounts
+                            .map((a) => DropdownMenuItem(
+                                value: a.id,
+                                child: Text(a.name,
+                                    style: const TextStyle(fontSize: 13))))
+                            .toList(),
+                        onChanged: (v) => setSheet(() {
+                          if (v != null) picks[k] = v;
+                        }),
+                      ),
+                    ]),
+                  ),
+                const SizedBox(height: 14),
+                FilledButton(
+                  onPressed: picks.length == keys.length
+                      ? () => Navigator.pop(ctx, picks)
+                      : null,
+                  child: const Text('确认'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('取消'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickAndUpload() async {
@@ -319,7 +503,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: const AuraAppBar(title: 'AI 智能导入'),
       floatingActionButton: FloatingActionButton(
         onPressed: _uploading ? null : _pickAndUpload,
@@ -411,7 +595,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
                                 color: AppColors.text1)),
                         const SizedBox(height: 2),
                         Text(
-                          '${item.modelName} · ${DateFormat('M月d日 HH:mm').format(item.createdAt)}',
+                          DateFormat('M月d日 HH:mm').format(item.createdAt),
                           style: TextStyle(
                               fontSize: 11, color: AppColors.text2),
                         ),
@@ -460,18 +644,60 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
                         item.status == AiImportStatus.partial) &&
                     item.hasDrafts) ...[
                   const SizedBox(height: 8),
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.primary),
-                    ),
-                    const SizedBox(width: 6),
-                    Text('正在自动加密并入库…',
-                        style: TextStyle(
-                            fontSize: 11, color: AppColors.primary)),
-                  ]),
+                  if (_noNewData.contains(item.id))
+                    Row(children: [
+                      Icon(Icons.check_circle_outline_rounded,
+                          size: 14, color: AppColors.text3),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text('全部与已有账单重复，无需入库',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.text3)),
+                      ),
+                    ])
+                  else if (_applyErr[item.id] != null)
+                    Row(children: [
+                      Icon(Icons.error_outline_rounded,
+                          size: 14, color: AppColors.expense),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(_applyErr[item.id]!,
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.expense)),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () => _autoApplyOne(item),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.refresh_rounded,
+                                size: 14, color: AppColors.primary),
+                            const SizedBox(width: 2),
+                            Text('重试',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                        ),
+                      ),
+                    ])
+                  else
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.primary),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('正在自动加密并入库…',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.primary)),
+                    ]),
                 ],
                 if (item.status == AiImportStatus.failed &&
                     item.message != null) ...[
