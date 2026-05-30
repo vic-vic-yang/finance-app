@@ -129,6 +129,10 @@ class AiDraft {
   final String accountId;    // 后端从 AiImport.accountId 填的
   final String note;
   final DateTime date;
+  final String? externalId;
+  final String? fundingHint; // 收/付款方式原始串
+  final String direction;    // 'expense' / 'income' / 'transfer'
+  final String? counterparty;
 
   AiDraft({
     required this.type,
@@ -138,6 +142,10 @@ class AiDraft {
     required this.accountId,
     required this.note,
     required this.date,
+    this.externalId,
+    this.fundingHint,
+    this.direction = 'expense',
+    this.counterparty,
   });
 
   factory AiDraft.fromJson(Map<String, dynamic> j) => AiDraft(
@@ -148,6 +156,12 @@ class AiDraft {
         accountId: j['accountId'] as String? ?? '',
         note: j['note'] as String? ?? '',
         date: DateTime.tryParse(j['date'] as String? ?? '') ?? DateTime.now(),
+        externalId: (j['externalId'] as String?)?.trim().isEmpty == true
+            ? null
+            : j['externalId'] as String?,
+        fundingHint: j['fundingHint'] as String?,
+        direction: (j['direction'] as String?) ?? 'expense',
+        counterparty: j['counterparty'] as String?,
       );
 
   bool get isIncome => type == 'income';
