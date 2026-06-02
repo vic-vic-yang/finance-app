@@ -358,7 +358,7 @@ class _LedgersScreenState extends State<LedgersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '账本管理',
         actions: [

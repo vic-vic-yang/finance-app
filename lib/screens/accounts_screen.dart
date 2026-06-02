@@ -73,7 +73,7 @@ class _AccountsScreenState extends State<AccountsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text('账户'),

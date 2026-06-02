@@ -269,12 +269,18 @@ class ApiService {
     required String toAccountId,
     required double amount,
     String? note,
+    String? fromNoteCipher,
+    String? toNoteCipher,
+    int? noteDekVer,
   }) =>
       _post('/accounts/transfer', {
         'fromAccountId': fromAccountId,
         'toAccountId': toAccountId,
         'amount': amount,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (fromNoteCipher != null) 'fromNoteCipher': fromNoteCipher,
+        if (toNoteCipher != null) 'toNoteCipher': toNoteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
       });
 
   // ── Categories ────────────────────────────────────────────

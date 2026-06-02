@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/glass.dart';
+import '../core/theme.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
 import '../models/budget.dart';
@@ -228,7 +229,7 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '月报',
         actions: [

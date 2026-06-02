@@ -221,7 +221,7 @@ class _BillsScreenState extends State<BillsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '账单',
         bottom: PreferredSize(

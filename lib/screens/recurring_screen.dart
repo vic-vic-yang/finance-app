@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../widgets/glass.dart';
+import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../crypto/key_chain.dart';
 import '../models/recurring.dart';
 import '../models/account.dart';
 import '../models/category.dart';
+import 'add_bill_screen.dart' show CategoryPickerSheet, AccountPickerSheet;
 
 /// 周期账单 / 订阅管家
 ///
@@ -161,7 +163,7 @@ class _RecurringScreenState extends State<RecurringScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '周期账单',
         bottom: TabBar(
@@ -460,8 +462,8 @@ class _RecurringEditSheet extends StatefulWidget {
 class _RecurringEditSheetState extends State<_RecurringEditSheet> {
   final _amountCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
-  String? _categoryId;
-  String? _accountId;
+  Category? _category;
+  Account? _account;
   int _cycleDay = 1;
   bool _saving = false;
 
@@ -471,8 +473,11 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     final init = widget.init;
     if (init != null) {
       _amountCtrl.text = init.amount.toString();
-      _categoryId = init.categoryId;
-      _accountId = init.accountId;
+      _category = widget.categories
+          .where((c) => c.id == init.categoryId)
+          .firstOrNull;
+      _account =
+          widget.accounts.where((a) => a.id == init.accountId).firstOrNull;
       _cycleDay = init.cycleDay;
       // 解密原始 note 填入
       if (init.noteCipher != null && init.noteDekVer != null) {
@@ -503,10 +508,10 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
   Future<void> _save() async {
     final amount = double.tryParse(_amountCtrl.text);
     if (amount == null || amount <= 0) return _toast('请输入有效金额');
-    if (_categoryId == null) return _toast('请选择分类');
-    if (_accountId == null) return _toast('请选择账户');
+    if (_category == null) return _toast('请选择分类');
+    if (_account == null) return _toast('请选择账户');
 
-    final acc = widget.accounts.firstWhere((a) => a.id == _accountId);
+    final acc = _account!;
     setState(() => _saving = true);
     try {
       final cipher = KeyChain.instance.encryptText(
@@ -515,8 +520,8 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
       );
       final dekVer = KeyChain.instance.dekVersionOf(acc.ledgerId) ?? 1;
       final body = {
-        'categoryId': _categoryId,
-        'accountId': _accountId,
+        'categoryId': _category!.id,
+        'accountId': _account!.id,
         'type': 'expense',
         'amount': amount,
         'noteCipher': cipher,
@@ -536,6 +541,76 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _openCategoryPicker() async {
+    final result = await showModalBottomSheet<Category>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => CategoryPickerSheet(
+        categories: widget.categories,
+        selectedId: _category?.id,
+        type: 'expense',
+      ),
+    );
+    if (result != null) setState(() => _category = result);
+  }
+
+  Future<void> _openAccountPicker() async {
+    final result = await showModalBottomSheet<Account>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AccountPickerSheet(
+        accounts: widget.accounts,
+        selectedId: _account?.id,
+      ),
+    );
+    if (result != null) setState(() => _account = result);
+  }
+
+  /// 与金额/备注的 OutlineInputBorder 风格一致的可点选字段
+  Widget _pickerField({
+    required String label,
+    required String emoji,
+    required String? value,
+    required String placeholder,
+    required VoidCallback onTap,
+  }) {
+    final hasValue = value != null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        child: Row(children: [
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              hasValue ? value : placeholder,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                color: hasValue ? AppColors.text1 : AppColors.text2,
+              ),
+            ),
+          ),
+          Icon(Icons.unfold_more_rounded, size: 18, color: AppColors.text3),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -566,34 +641,20 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _categoryId,
-                items: widget.categories
-                    .map((c) => DropdownMenuItem(
-                          value: c.id,
-                          child: Text('${c.displayIcon}  ${c.fullName}'),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _categoryId = v),
-                decoration: const InputDecoration(
-                  labelText: '分类',
-                  border: OutlineInputBorder(),
-                ),
+              _pickerField(
+                label: '分类',
+                emoji: _category?.displayIcon ?? '📂',
+                value: _category?.fullName,
+                placeholder: '选择分类',
+                onTap: _openCategoryPicker,
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _accountId,
-                items: widget.accounts
-                    .map((a) => DropdownMenuItem(
-                          value: a.id,
-                          child: Text(a.name),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _accountId = v),
-                decoration: const InputDecoration(
-                  labelText: '账户',
-                  border: OutlineInputBorder(),
-                ),
+              _pickerField(
+                label: '账户',
+                emoji: _account?.typeEmoji ?? '💰',
+                value: _account?.name,
+                placeholder: '选择账户',
+                onTap: _openAccountPicker,
               ),
               const SizedBox(height: 12),
               Row(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/glass.dart';
+import '../core/theme.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../models/chat_message.dart';
@@ -158,7 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: const AuraAppBar(title: '财记助手'),
       body: AuraBackground(
         child: Column(

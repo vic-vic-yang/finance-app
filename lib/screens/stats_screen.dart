@@ -197,7 +197,7 @@ class _StatsScreenState extends State<StatsScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
+          preferredSize: const Size.fromHeight(46),
           child: _dateNav(),
         ),
       ),
@@ -278,15 +278,9 @@ class _StatsScreenState extends State<StatsScreen>
 
   // ── Date navigator ────────────────────────────────────────────
   Widget _dateNav() => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
         child: Row(children: [
-          IconButton(
-            onPressed: _prev,
-            icon: Icon(Icons.chevron_left_rounded,
-                color: AppColors.text2),
-            padding: EdgeInsets.zero,
-          ),
-          const SizedBox(width: 4),
+          _navArrow(Icons.chevron_left_rounded, _prev, enabled: true),
           Expanded(
             child: Text(
               _periodLabel,
@@ -297,15 +291,26 @@ class _StatsScreenState extends State<StatsScreen>
                   color: AppColors.text1),
             ),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            onPressed: _canGoNext ? _next : null,
-            icon: Icon(Icons.chevron_right_rounded,
-                color: _canGoNext ? AppColors.text2 : AppColors.border),
-            padding: EdgeInsets.zero,
-          ),
+          _navArrow(Icons.chevron_right_rounded,
+              _canGoNext ? _next : null,
+              enabled: _canGoNext),
         ]),
       );
+
+  /// 紧凑的左右翻页按钮（36×36），避免 IconButton 默认 48 高撑破 header bottom
+  Widget _navArrow(IconData icon, VoidCallback? onTap, {required bool enabled}) {
+    return InkResponse(
+      onTap: onTap,
+      radius: 22,
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: Icon(icon,
+            size: 24,
+            color: enabled ? AppColors.text2 : AppColors.border),
+      ),
+    );
+  }
 
   // ── Asset card（家庭资产卡 + 走势线图） ────────────────────
   Widget _assetCard() {

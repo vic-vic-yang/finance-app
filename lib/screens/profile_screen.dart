@@ -112,7 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: const AuraAppBar(title: '我的'),
       body: AuraBackground(
         child: ListView(

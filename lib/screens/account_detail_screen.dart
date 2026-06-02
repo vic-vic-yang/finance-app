@@ -228,7 +228,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   Widget build(BuildContext context) {
     if (_loadingAccount && _account == null) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.bg,
         appBar: const AuraAppBar(title: '账户详情'),
         body: AuraBackground(
           child: Center(
@@ -238,7 +238,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     }
     if (_account == null) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.bg,
         appBar: const AuraAppBar(title: '账户详情'),
         body: AuraBackground(
           child: Center(
@@ -250,7 +250,25 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     }
     final a = _account!;
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('记一笔'),
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AddBillScreen(initialAccountId: a.id),
+            ),
+          );
+          if (!mounted) return;
+          // 回来后刷新账户余额与账单明细
+          await _loadAccount();
+          await _loadBills(refresh: true);
+        },
+      ),
       appBar: AuraAppBar(
         titleWidget: Row(
           mainAxisSize: MainAxisSize.min,

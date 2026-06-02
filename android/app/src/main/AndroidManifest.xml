@@ -4,21 +4,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- 语音输入（speech_to_text） -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- 一些设备的 STT 需要 BluetoothHeadset 权限来用蓝牙耳麦录音；可选 -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-
     <!-- OCR 拍照 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-
-    <!-- speech_to_text 需要能看到处理 STT 的系统包 -->
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-    </queries>
 
     <application
         android:label="财记"

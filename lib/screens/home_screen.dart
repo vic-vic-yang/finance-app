@@ -236,28 +236,14 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  SliverAppBar _appBar() {
+  Widget _appBar() {
     final h = DateTime.now().hour;
     final greeting = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
     final l = _currentLedger;
-    return SliverAppBar(
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      // 始终钉在顶部，不随滚动消失
-      pinned: true,
-      titleSpacing: 12,
-      toolbarHeight: 64,
-      leadingWidth: 64,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: Center(
-          child: ProfileAvatar(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            ),
-          ),
-        ),
+    return AuraSliverAppBar(
+      avatarTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
       ),
       actions: [
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
@@ -274,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
       ],
-      title: Column(
+      titleWidget: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

@@ -11,8 +11,10 @@ import '../services/recents_service.dart';
 import 'ai_imports_screen.dart';
 
 class AddBillScreen extends StatefulWidget {
-  const AddBillScreen({super.key, this.bill});
+  const AddBillScreen({super.key, this.bill, this.initialAccountId});
   final Bill? bill;
+  /// 新建账单时预选的账户 id（如从账户详情页"记一笔"进入）
+  final String? initialAccountId;
 
   @override
   State<AddBillScreen> createState() => _AddBillScreenState();
@@ -49,6 +51,7 @@ class _AddBillScreenState extends State<AddBillScreen>
   Account? _toAccount;
   bool _saving = false;
   bool _loaded = false;
+
 
   bool get _isTransfer => _type == 'transfer';
 
@@ -207,7 +210,15 @@ class _AddBillScreenState extends State<AddBillScreen>
       } else {
         final typed = allCats.where((c) => c.type == _type).toList();
         if (typed.isNotEmpty) initCat = typed.first;
-        if (myAccounts.isNotEmpty) initAcc = myAccounts.first;
+        if (myAccounts.isNotEmpty) {
+          // 有预选账户（从账户详情"记一笔"进来）就用它，否则用第一个
+          initAcc = widget.initialAccountId != null
+              ? myAccounts.firstWhere(
+                  (a) => a.id == widget.initialAccountId,
+                  orElse: () => myAccounts.first,
+                )
+              : myAccounts.first;
+        }
       }
 
       setState(() {
@@ -337,11 +348,28 @@ class _AddBillScreenState extends State<AddBillScreen>
       }
       setState(() => _saving = true);
       try {
+        // 生成两条转账轨迹流水的备注密文（客户端用账本 DEK 加密）；
+        // 密钥未就绪则降级为仅改余额（转账仍成功，只是不留流水）。
+        final userNote = _noteCtrl.text.trim();
+        final tail = userNote.isEmpty ? '' : ' · $userNote';
+        final lid = _selectedAccount!.ledgerId;
+        String? fromCipher, toCipher;
+        int? dekVer;
+        if (KeyChain.instance.hasDek(lid)) {
+          dekVer = KeyChain.instance.dekVersionOf(lid) ?? 1;
+          fromCipher = KeyChain.instance.encryptText(
+              ledgerId: lid, plain: '转账·转出 → ${_toAccount!.name}$tail');
+          toCipher = KeyChain.instance.encryptText(
+              ledgerId: lid, plain: '转账·转入 ← ${_selectedAccount!.name}$tail');
+        }
         await ApiService.transfer(
           fromAccountId: _selectedAccount!.id,
           toAccountId: _toAccount!.id,
           amount: amount,
-          note: _noteCtrl.text.trim(),
+          note: userNote,
+          fromNoteCipher: fromCipher,
+          toNoteCipher: toCipher,
+          noteDekVer: dekVer,
         );
         if (!mounted) return;
         bumpRefresh();
@@ -740,7 +768,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _CategoryPickerSheet(
+      builder: (_) => CategoryPickerSheet(
         categories: _filteredCategories,
         selectedId: _selectedCategory?.id,
         type: _type,
@@ -772,7 +800,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _AccountPickerSheet(
+      builder: (_) => AccountPickerSheet(
         accounts: _accounts,
         selectedId: _selectedAccount?.id,
       ),
@@ -797,7 +825,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _AccountPickerSheet(
+      builder: (_) => AccountPickerSheet(
         accounts: _accounts,
         selectedId: _selectedAccount?.id,
       ),
@@ -1443,23 +1471,24 @@ Future<Category?> _promptNewCategory({
 // ────────────────────────────────────────────────────────────
 //  分类选择器 - 双列布局：左侧父分类，右侧子分类
 // ────────────────────────────────────────────────────────────
-class _CategoryPickerSheet extends StatefulWidget {
+class CategoryPickerSheet extends StatefulWidget {
   final List<Category> categories;
   final String? selectedId;
   final String type;
-  const _CategoryPickerSheet({
+  const CategoryPickerSheet({
+    super.key,
     required this.categories,
     required this.selectedId,
     required this.type,
   });
   @override
-  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+  State<CategoryPickerSheet> createState() => _CategoryPickerSheetState();
 }
 
 /// 「最近」一级分类用的虚拟 id（不存数据库）
 const String _recentParentId = '__recent__';
 
-class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
+class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
   /// 完整分类副本（包含 widget.categories + 用户新建的）。
   /// 用本地副本，避免新建后还要关掉重新打开才能看到。
   late List<Category> _cats;
@@ -1987,10 +2016,11 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
 // ────────────────────────────────────────────────────────────
 //  账户选择器 - 单列列表（适合任意数量账户）
 // ────────────────────────────────────────────────────────────
-class _AccountPickerSheet extends StatelessWidget {
+class AccountPickerSheet extends StatelessWidget {
   final List<Account> accounts;
   final String? selectedId;
-  const _AccountPickerSheet({
+  const AccountPickerSheet({
+    super.key,
     required this.accounts,
     required this.selectedId,
   });

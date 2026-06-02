@@ -170,24 +170,12 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
       // 3) 客户端逐草稿解析资金账户 + 拆账单/转账
       final saved = await PaymentMethodMap.load(acc.ledgerId);
       final accPairs = _accounts.map((a) => (a.id, a.name)).toList();
+      final accNameById = {for (final p in accPairs) p.$1: p.$2};
+      String accNameOf(String id) => accNameById[id] ?? '账户';
 
-      // 先扫一遍，找出未匹配的付款方式
-      final unresolved = <String>{};
-      for (final d in drafts) {
-        final hint = d.fundingHint ?? '';
-        if (hint.isEmpty) continue;
-        final norm = normalizeFundingHint(hint);
-        if (norm.isEmpty) continue;
-        if (matchAccountId(norm, accPairs, saved) == null) unresolved.add(norm);
-      }
-      // 让用户指认未匹配的（记住）
-      if (unresolved.isNotEmpty) {
-        final picks = await _promptFundingMapping(unresolved.toList());
-        if (picks == null) { failReason = '已取消（待指认付款方式）'; return; }
-        await PaymentMethodMap.putAll(acc.ledgerId, picks);
-        saved.addAll(picks);
-      }
-
+      // 收支账单一律默认入到「上传时选的账户」：银行卡流水都是该卡本身；
+      // 微信零钱→微信、支付宝余额宝→支付宝 等本就属于该来源，无需逐笔指认。
+      // 仅当付款方式能明确匹配到另一个已存在的账户时，才自动归过去（不打扰用户）。
       String resolveAccount(AiDraft d) {
         final hint = d.fundingHint ?? '';
         if (hint.isEmpty) return item.accountId; // 兜底默认（上传时选的账户）
@@ -196,20 +184,76 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         return matchAccountId(norm, accPairs, saved) ?? item.accountId;
       }
 
+      // 「不计收支」转账行的对端账户解析（如花呗还款→转入花呗）。
+      // 只在对端能匹配到一个**已存在**账户时才返回它（→ 记成转账，如花呗）；
+      // 否则返回 null → 调用处按普通收/支记账，不弹框、不打扰用户。
+      String? resolveTransferDest(AiDraft d) {
+        final raw = d.counterparty ?? '';
+        if (raw.isEmpty) return null;
+        final norm = normalizeFundingHint(raw);
+        if (norm.isEmpty) return null;
+        return matchAccountId(norm, accPairs, saved);
+      }
+
       final bills = <Map<String, dynamic>>[];
       final transfers = <Map<String, dynamic>>[];
       for (final d in drafts) {
         final fromId = resolveAccount(d);
         if (fromId.isEmpty) continue;
         if (d.direction == 'transfer') {
-          final toId = matchAccountId(
-              normalizeFundingHint(d.counterparty ?? ''), accPairs, saved);
-          if (toId == null || toId == fromId) continue; // 两端凑不齐就跳过
-          transfers.add({
-            'fromAccountId': fromId,
-            'toAccountId': toId,
-            'amount': d.amount,
-          });
+          final toId = resolveTransferDest(d);
+          if (toId != null && toId != fromId) {
+            // 账户间转账（如 储蓄卡 → 花呗 还款）→ 拆成一支一收两条账单，
+            // 都标 isTransfer：在账单列表可见，但不计入收支统计/预算。
+            final fromName = accNameOf(fromId);
+            final toName = accNameOf(toId);
+            final base = d.note.trim();
+            final tail = base.isEmpty ? '' : ' · $base';
+            final outNote = '转账·转出 → $toName$tail';
+            final inNote = '转账·转入 ← $fromName$tail';
+            bills.add({
+              'accountId': fromId,
+              'categoryId': d.categoryId,
+              'type': 'expense',
+              'amount': d.amount,
+              'noteCipher': KeyChain.instance
+                  .encryptText(ledgerId: acc.ledgerId, plain: outNote),
+              'noteDekVer': dekVer,
+              'date': d.date.toIso8601String(),
+              if (d.externalId != null) 'externalId': d.externalId,
+              'source': _sourceOf(item),
+              'isTransfer': true,
+            });
+            bills.add({
+              'accountId': toId,
+              'categoryId': d.categoryId,
+              'type': 'income',
+              'amount': d.amount,
+              'noteCipher': KeyChain.instance
+                  .encryptText(ledgerId: acc.ledgerId, plain: inNote),
+              'noteDekVer': dekVer,
+              'date': d.date.toIso8601String(),
+              // 转入这条不带 externalId，避免同一笔被跨源去重匹配两次
+              'source': _sourceOf(item),
+              'isTransfer': true,
+            });
+          } else {
+            // 对端不是已有账户（转给别人/群收款/白条等）→ 不弹框，
+            // 按这笔的资金方向默认记一笔收/支（绝不丢、不打扰用户）。
+            final cipher = KeyChain.instance
+                .encryptText(ledgerId: acc.ledgerId, plain: d.note);
+            bills.add({
+              'accountId': fromId,
+              'categoryId': d.categoryId,
+              'type': d.type == 'income' ? 'income' : 'expense',
+              'amount': d.amount,
+              'noteCipher': cipher,
+              'noteDekVer': dekVer,
+              'date': d.date.toIso8601String(),
+              if (d.externalId != null) 'externalId': d.externalId,
+              'source': _sourceOf(item),
+            });
+          }
         } else {
           final cipher = KeyChain.instance
               .encryptText(ledgerId: acc.ledgerId, plain: d.note);
@@ -271,73 +315,6 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
     if (n.contains('微信') || n.toLowerCase().contains('wechat') ||
         n.toLowerCase().contains('weixin')) return 'wechat';
     return 'manual';
-  }
-
-  /// 让用户把未匹配的付款方式各选一个账户。返回 归一key→accountId；取消返回 null。
-  Future<Map<String, String>?> _promptFundingMapping(List<String> keys) async {
-    final picks = <String, String>{};
-    return showModalBottomSheet<Map<String, String>>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('这些付款方式归到哪个账户？',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600,
-                        color: AppColors.text1)),
-                const SizedBox(height: 4),
-                Text('选好后会记住，下次自动套用',
-                    style: TextStyle(fontSize: 12, color: AppColors.text3)),
-                const SizedBox(height: 12),
-                for (final k in keys)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(children: [
-                      Expanded(child: Text(k,
-                          style: TextStyle(fontSize: 14, color: AppColors.text1))),
-                      const SizedBox(width: 12),
-                      DropdownButton<String>(
-                        value: picks[k],
-                        hint: const Text('选账户'),
-                        items: _accounts
-                            .map((a) => DropdownMenuItem(
-                                value: a.id,
-                                child: Text(a.name,
-                                    style: const TextStyle(fontSize: 13))))
-                            .toList(),
-                        onChanged: (v) => setSheet(() {
-                          if (v != null) picks[k] = v;
-                        }),
-                      ),
-                    ]),
-                  ),
-                const SizedBox(height: 14),
-                FilledButton(
-                  onPressed: picks.length == keys.length
-                      ? () => Navigator.pop(ctx, picks)
-                      : null,
-                  child: const Text('确认'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, null),
-                  child: const Text('取消'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _pickAndUpload() async {

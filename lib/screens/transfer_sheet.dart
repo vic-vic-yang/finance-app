@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
@@ -64,11 +65,28 @@ class _TransferSheetState extends State<TransferSheet> {
 
     setState(() => _saving = true);
     try {
+      // 生成两条转账流水的备注密文（用账本 DEK 客户端加密）。
+      // 密钥未就绪时降级为仅改余额（不留流水），转账本身仍成功。
+      final userNote = _noteCtrl.text.trim();
+      final tail = userNote.isEmpty ? '' : ' · $userNote';
+      final lid = _from!.ledgerId;
+      String? fromCipher, toCipher;
+      int? dekVer;
+      if (KeyChain.instance.hasDek(lid)) {
+        dekVer = KeyChain.instance.dekVersionOf(lid) ?? 1;
+        fromCipher = KeyChain.instance.encryptText(
+            ledgerId: lid, plain: '转账·转出 → ${_to!.name}$tail');
+        toCipher = KeyChain.instance.encryptText(
+            ledgerId: lid, plain: '转账·转入 ← ${_from!.name}$tail');
+      }
       await ApiService.transfer(
         fromAccountId: _from!.id,
         toAccountId: _to!.id,
         amount: amount,
-        note: _noteCtrl.text.trim(),
+        note: userNote,
+        fromNoteCipher: fromCipher,
+        toNoteCipher: toCipher,
+        noteDekVer: dekVer,
       );
       if (!mounted) return;
       bumpRefresh();

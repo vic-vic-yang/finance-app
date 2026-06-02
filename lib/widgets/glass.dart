@@ -488,3 +488,77 @@ class AuraAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 }
+
+/// 磨砂玻璃 header 背景：滚动内容从下方经过时被模糊 + 半透明底色覆盖，
+/// 避免 pinned header 透明导致「穿透看见下面内容」。
+class _GlassHeaderBg extends StatelessWidget {
+  const _GlassHeaderBg();
+  @override
+  Widget build(BuildContext context) {
+    final dark = _isDark;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          color: AppColors.bg.withOpacity(dark ? 0.60 : 0.72),
+        ),
+      ),
+    );
+  }
+}
+
+/// [AuraAppBar] 的可滚动（SliverAppBar）版本，给首页这种 CustomScrollView
+/// 用：pinned 钉顶 + 磨砂玻璃背景，滚动内容不会穿透到 header 上。
+///
+/// 视觉与 [AuraAppBar] 完全一致：左头像、primary 标题、64 高。
+class AuraSliverAppBar extends StatelessWidget {
+  const AuraSliverAppBar({
+    super.key,
+    this.title,
+    this.titleWidget,
+    this.avatarTap,
+    this.actions,
+    this.toolbarHeight = 64,
+  });
+
+  final String? title;
+  final Widget? titleWidget;
+  final VoidCallback? avatarTap;
+  final List<Widget>? actions;
+  final double toolbarHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAvatar = avatarTap != null;
+    return SliverAppBar(
+      pinned: true,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: toolbarHeight,
+      titleSpacing: hasAvatar ? 12 : 20,
+      leadingWidth: hasAvatar ? 64 : null,
+      leading: hasAvatar
+          ? Padding(
+              padding: const EdgeInsets.only(left: 20),
+              child: Center(child: ProfileAvatar(onTap: avatarTap!)),
+            )
+          : null,
+      title: titleWidget ??
+          (title != null
+              ? Text(
+                  title!,
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                )
+              : null),
+      actions: actions,
+      flexibleSpace: const _GlassHeaderBg(),
+    );
+  }
+}
