@@ -10,6 +10,7 @@ import '../models/account.dart';
 import '../models/budget.dart';
 import '../models/ledger.dart';
 import '../models/insight.dart';
+import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
@@ -72,6 +73,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// CFO 复盘待处理建议数量
   int _cfoCount = 0;
 
+  /// 是否存在 critical 级 CFO 待办（用于首页卡醒目化）
+  bool _cfoHasCritical = false;
+
   @override
   void initState() {
     super.initState();
@@ -106,15 +110,17 @@ class _HomeScreenState extends State<HomeScreen>
 
       // CFO 复盘建议数量：与主数据并行拉取，失败不影响首页其他数据
       final cfoFuture = ApiService.cfoProposals()
-          .then<int>((res) {
+          .then((res) {
             final list = (res is List
                 ? res
                 : (res is Map
                     ? (res['proposals'] ?? res['data'] ?? const [])
                     : const [])) as List;
-            return list.length;
+            return list
+                .map((e) => Proposal.fromJson(e as Map<String, dynamic>))
+                .toList();
           })
-          .catchError((_) => 0);
+          .catchError((_) => <Proposal>[]);
 
       final results = await Future.wait([
         ApiService.getAccounts(),
@@ -128,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ]);
 
-      final cfoCount = await cfoFuture;
+      final cfoProps = await cfoFuture;
 
       if (!mounted) return;
       final ledgers = (results[4]['ledgers'] as List? ?? [])
@@ -150,7 +156,8 @@ class _HomeScreenState extends State<HomeScreen>
             .map((b) => Budget.fromJson(b as Map<String, dynamic>)).toList();
         _insights = (results[5]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
-        _cfoCount = cfoCount;
+        _cfoCount = cfoProps.length;
+        _cfoHasCritical = cfoProps.any((p) => p.severity == 'critical');
         _ledgers = ledgers;
         _currentLedger = ledgers.firstWhere(
           (l) => l.id == currentId,
@@ -589,16 +596,24 @@ class _HomeScreenState extends State<HomeScreen>
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.text1)),
+                        color:
+                            _cfoHasCritical ? AppColors.expense : AppColors.text1)),
                 const SizedBox(height: 1),
                 Text(
-                  _cfoCount > 0 ? '有 $_cfoCount 条建议待处理' : '一切正常，点开看看',
-                  style: TextStyle(fontSize: 12, color: AppColors.text2),
+                  _cfoHasCritical
+                      ? '有 $_cfoCount 件需要注意'
+                      : (_cfoCount > 0 ? '有 $_cfoCount 条建议待处理' : '一切正常，点开看看'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _cfoHasCritical
+                          ? AppColors.expense
+                          : AppColors.text2),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: AppColors.text3),
+          Icon(Icons.chevron_right_rounded,
+              color: _cfoHasCritical ? AppColors.expense : AppColors.text3),
         ]),
       ),
     );
