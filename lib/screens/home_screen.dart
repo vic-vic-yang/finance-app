@@ -19,6 +19,7 @@ import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
 import 'budgets_screen.dart';
+import 'cfo_screen.dart';
 import 'ledgers_screen.dart';
 import 'profile_screen.dart';
 import 'recurring_screen.dart';
@@ -62,6 +63,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// AI 洞察 feed
   List<AiInsight> _insights = [];
 
+  /// CFO 复盘待处理建议数量
+  int _cfoCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +98,18 @@ class _HomeScreenState extends State<HomeScreen>
       final last  = DateTime(now.year, now.month + 1, 0).day;
       final end   = '${now.year}-${now.month.toString().padLeft(2, '0')}-${last.toString().padLeft(2, '0')}';
 
+      // CFO 复盘建议数量：与主数据并行拉取，失败不影响首页其他数据
+      final cfoFuture = ApiService.cfoProposals()
+          .then<int>((res) {
+            final list = (res is List
+                ? res
+                : (res is Map
+                    ? (res['proposals'] ?? res['data'] ?? const [])
+                    : const [])) as List;
+            return list.length;
+          })
+          .catchError((_) => 0);
+
       final results = await Future.wait([
         ApiService.getAccounts(),
         ApiService.getBills(limit: 8),
@@ -105,6 +121,8 @@ class _HomeScreenState extends State<HomeScreen>
           (_) => <String, dynamic>{'insights': []},
         ),
       ]);
+
+      final cfoCount = await cfoFuture;
 
       if (!mounted) return;
       final ledgers = (results[4]['ledgers'] as List? ?? [])
@@ -126,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen>
             .map((b) => Budget.fromJson(b as Map<String, dynamic>)).toList();
         _insights = (results[5]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
+        _cfoCount = cfoCount;
         _ledgers = ledgers;
         _currentLedger = ledgers.firstWhere(
           (l) => l.id == currentId,
@@ -163,6 +182,7 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
+              SliverToBoxAdapter(child: _cfoEntryCard()),
               if (_insights.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '🤖 AI 洞察',
@@ -526,6 +546,46 @@ class _HomeScreenState extends State<HomeScreen>
               style: TextStyle(
                   color: fg, fontSize: 16, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+
+  /// CFO 复盘入口卡：显示待处理建议数，点进 [CfoScreen]
+  Widget _cfoEntryCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.all(16),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CfoScreen()),
+          );
+          if (mounted) _load();
+        },
+        child: Row(children: [
+          const Text('🧮', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CFO 复盘',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text1)),
+                const SizedBox(height: 1),
+                Text(
+                  _cfoCount > 0 ? '有 $_cfoCount 条建议待处理' : '一切正常，点开看看',
+                  style: TextStyle(fontSize: 12, color: AppColors.text2),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: AppColors.text3),
+        ]),
       ),
     );
   }
