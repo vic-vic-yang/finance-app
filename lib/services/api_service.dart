@@ -53,6 +53,19 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// 像 [_get] 但不强制把响应转成 Map —— 用于返回 JSON 数组的端点
+  /// （如 GET /cfo/proposals 直接返回一个 proposal 数组）。
+  static Future<dynamic> _getRaw(
+    String path, {
+    Map<String, String>? params,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: params);
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(_kRequestTimeout);
+    return jsonDecode(res.body);
+  }
+
   static Future<Map<String, dynamic>> _post(
     String path,
     Map<String, dynamic> body, {
@@ -632,4 +645,14 @@ class ApiService {
     required String target,
   }) =>
       _post('/ai/insights/dismiss', {'type': type, 'target': target});
+
+  // ─── CFO 复盘简报 ─────────────────────────────────────────
+  /// 拉取（惰性生成）当前账本的 pending 建议。
+  /// 后端直接返回一个 JSON 数组，故用 [_getRaw] 拿到 List；
+  /// 极端情况下若被包成 Map（{proposals|data: [...]}），调用方做兜底解析。
+  static Future<dynamic> cfoProposals() => _getRaw('/cfo/proposals');
+
+  /// 对某条建议做决定：approve | dismiss | snooze | resolve
+  static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
+      _post('/cfo/proposals/$id/decide', {'action': action});
 }
