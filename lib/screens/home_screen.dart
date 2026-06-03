@@ -26,7 +26,12 @@ import 'profile_screen.dart';
 import 'recurring_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onSwitchTab});
+
+  /// 由 MainScreen 注入:切换底部 tab(0=主页 1=统计 2=预算 3=目标)。
+  /// 为空时各入口回退为 push 新页面。
+  final void Function(int index)? onSwitchTab;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -202,11 +207,7 @@ class _HomeScreenState extends State<HomeScreen>
                 _sectionTitleWithAction(
                   _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
                   '管理',
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const BudgetsScreen()),
-                  ),
+                  _goBudgets,
                 ),
                 SliverToBoxAdapter(child: _budgetTotalCard()),
               ],
@@ -829,7 +830,19 @@ class _HomeScreenState extends State<HomeScreen>
   /// 是否有任何预算（手填总预算 或 分类预算）
   bool get _hasAnyBudget => _shownBudgetPeriod != null;
 
-  /// 首页只显示这一个卡片，点击进 BudgetsScreen
+  /// 进预算:优先切到底部「预算」tab(不开新页面),没有注入回调才 push。
+  void _goBudgets() {
+    if (widget.onSwitchTab != null) {
+      widget.onSwitchTab!(2); // 2 = 预算 tab
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+      );
+    }
+  }
+
+  /// 首页只显示这一个卡片，点击切到预算 tab
   Widget _budgetTotalCard() {
     final period = _shownBudgetPeriod ?? 'MONTHLY';
     final isYearly = period == 'YEARLY';
@@ -850,10 +863,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: GlassCard(
         radius: 16,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const BudgetsScreen()),
-        ),
+        onTap: _goBudgets,
         child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

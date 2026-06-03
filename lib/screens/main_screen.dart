@@ -44,7 +44,7 @@ class _MainScreenState extends State<MainScreen> {
         // 故意不用 const —— 每次 rebuild 创建新的 widget 实例，
         // 让 Flutter 重新走 build() 路径（State 由 AutomaticKeepAliveClientMixin 保活）
         final pages = <Widget>[
-          HomeScreen(),
+          HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
           StatsScreen(),
           BudgetsScreen(),
           GoalsScreen(),
