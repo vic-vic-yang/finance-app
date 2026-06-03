@@ -251,11 +251,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final a = _account!;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('记一笔'),
+        tooltip: '记一笔',
+        child: const Icon(Icons.add_rounded),
         onPressed: () async {
           await Navigator.push(
             context,

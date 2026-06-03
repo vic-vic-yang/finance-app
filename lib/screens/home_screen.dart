@@ -15,6 +15,7 @@ import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
+import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
@@ -266,6 +267,18 @@ class _HomeScreenState extends State<HomeScreen>
         MaterialPageRoute(builder: (_) => const ProfileScreen()),
       ),
       actions: [
+        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
+          IconButton(
+            tooltip: '导入流水',
+            icon: Icon(Icons.file_upload_outlined, color: AppColors.text1),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiImportsScreen()),
+              );
+              if (mounted) _load();
+            },
+          ),
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(right: 16),
