@@ -10,11 +10,13 @@ import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../models/ai_import.dart';
 import '../models/bill.dart';
+import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../services/funding_matcher.dart';
 import '../services/payment_method_map.dart';
+import 'cfo_screen.dart';
 
 /// AI 智能导入：上传文件让 AI 解析为账单
 class AiImportsScreen extends StatefulWidget {
@@ -282,6 +284,8 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
       bumpRefresh();
       // 刷新列表卡片
       _refresh();
+      // 新账单已落库 → 当场拉 CFO，有高优建议就弹提示（内部已 try/catch，不拖累主流程）
+      await _watchAfterApply();
     } catch (e) {
       debugPrint('[ai-auto-apply] $e');
       failReason = _friendlyApplyErr(e);
@@ -306,6 +310,85 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
       return '网络中断，点重试';
     }
     return '入库失败，点重试';
+  }
+
+  /// 一批账单 apply 成功后调用：拉 CFO，有 critical/warning 建议就当场弹提示。
+  /// 失败/为空静默，绝不拖累导入主流程。
+  Future<void> _watchAfterApply() async {
+    try {
+      final res = await ApiService.cfoProposals();
+      final list = (res is List
+              ? res
+              : (res is Map
+                  ? (res['proposals'] ?? res['data'] ?? const [])
+                  : const []))
+          as List;
+      final items =
+          list.map((e) => Proposal.fromJson(e as Map<String, dynamic>)).toList();
+      final watch = items
+          .where((p) => p.severity == 'critical' || p.severity == 'warning')
+          .toList();
+      if (watch.isEmpty || !mounted) return;
+      _showWatchSheet(watch);
+    } catch (_) {/* 静默 */}
+  }
+
+  void _showWatchSheet(List<Proposal> items) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Text('🧮', style: TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('CFO 发现 ${items.length} 件值得看',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.text1)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              ...items.take(2).map((p) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text('· ${p.title}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: AppColors.text2)),
+                  )),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const CfoScreen()));
+                    },
+                    child: const Text('查看'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('知道了'),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 文件名推断来源渠道
