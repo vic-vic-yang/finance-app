@@ -6,7 +6,7 @@ import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/glass.dart';
-import 'bills_screen.dart';
+import 'recategorize_other_screen.dart';
 
 class CfoScreen extends StatefulWidget {
   const CfoScreen({super.key});
@@ -105,11 +105,14 @@ class _CfoScreenState extends State<CfoScreen> {
       return true;
     }
     if (p.actionKind == 'review_uncategorized') {
-      // v1：打开账单页让用户逐笔归类（"其他"过滤作为后续优化）
+      // 只列出"其他"分类账单，逐笔改分类
+      final ids =
+          ((params['categoryIds'] as List?) ?? const []).cast<String>();
       if (mounted) {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const BillsScreen()),
+          MaterialPageRoute(
+              builder: (_) => RecategorizeOtherScreen(categoryIds: ids)),
         );
       }
       return true;
