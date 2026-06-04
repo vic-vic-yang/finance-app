@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import '../widgets/glass.dart';
 import '../core/theme.dart';
 import '../crypto/key_chain.dart';
+import '../models/account.dart';
 import '../models/bill.dart';
 import '../models/chat_message.dart';
+import '../models/savings_goal.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 /// 对话式财务查询页
 ///
@@ -326,6 +329,9 @@ class _ChatScreenState extends State<ChatScreen> {
         body: (c.data['body'] as String?) ?? '',
         requiresClient: (c.data['requiresClient'] as bool?) ?? false,
         actionKind: (c.data['actionKind'] as String?) ?? '',
+        params:
+            (c.data['actionParams'] as Map?)?.cast<String, dynamic>() ??
+                const {},
       );
     }
     // 未知类型：JSON 兜底
@@ -622,9 +628,11 @@ class _CfoActionCard extends StatefulWidget {
     required this.body,
     required this.requiresClient,
     required this.actionKind,
+    required this.params,
   });
   final String proposalId, title, body, actionKind;
   final bool requiresClient;
+  final Map<String, dynamic> params;
   @override
   State<_CfoActionCard> createState() => _CfoActionCardState();
 }
@@ -635,7 +643,30 @@ class _CfoActionCardState extends State<_CfoActionCard> {
 
   Future<void> _confirm() async {
     if (widget.requiresClient) {
-      // Phase 1 不处理客户端动作（转目标在 Phase 3）
+      if (widget.actionKind == 'allocate_to_goal_byname') {
+        setState(() => _busy = true);
+        try {
+          final ok = await _runAllocateByName(widget.params);
+          if (!ok) {
+            if (mounted) setState(() => _busy = false);
+            return;
+          }
+          await ApiService.cfoDecide(widget.proposalId, 'resolve');
+          if (mounted) {
+            setState(() {
+              _state = 'done';
+              _busy = false;
+            });
+          }
+        } catch (_) {
+          if (mounted) {
+            _toast('执行失败');
+            setState(() => _busy = false);
+          }
+        }
+        return;
+      }
+      // 其它需客户端处理的动作暂不在对话里执行
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('这个操作请到「复盘」页确认执行')));
       return;
@@ -649,6 +680,79 @@ class _CfoActionCardState extends State<_CfoActionCard> {
           .showSnackBar(const SnackBar(content: Text('执行失败，请重试')));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 客户端解析名字 → id 后执行带备注转账（仅客户端有 DEK）
+  Future<bool> _runAllocateByName(Map<String, dynamic> params) async {
+    final lid = await AuthService.getCurrentLedgerId();
+    if (lid == null || !KeyChain.instance.hasDek(lid)) {
+      _toast('账本密钥未就绪');
+      return false;
+    }
+    final fromName = (params['fromAccountName'] as String?)?.trim() ?? '';
+    final goalName = (params['goalName'] as String?)?.trim() ?? '';
+    final amount = (params['amount'] as num?)?.toDouble() ?? 0;
+    if (fromName.isEmpty || amount <= 0) {
+      _toast('转账参数无效');
+      return false;
+    }
+
+    // 账户（客户端解密名）按名字匹配
+    final accRes = await ApiService.getAccounts();
+    final accounts = (accRes['accounts'] as List? ?? [])
+        .map((a) => Account.fromJson(a as Map<String, dynamic>))
+        .toList();
+    Account? from;
+    for (final a in accounts) {
+      if (a.name.contains(fromName)) {
+        from = a;
+        break;
+      }
+    }
+    if (from == null) {
+      _toast('没找到账户「$fromName」');
+      return false;
+    }
+
+    // 目标（客户端解密名）匹配，且必须绑定了账户
+    final goalRes = await ApiService.getGoals();
+    final goals = (goalRes['goals'] as List? ?? [])
+        .map((g) => SavingsGoal.fromJson(g as Map<String, dynamic>))
+        .toList();
+    SavingsGoal? goal;
+    for (final g in goals) {
+      if (g.accountId != null &&
+          g.accountId!.isNotEmpty &&
+          (goalName.isEmpty || g.name.contains(goalName))) {
+        goal = g;
+        break;
+      }
+    }
+    if (goal == null || goal.accountId == null || goal.accountId!.isEmpty) {
+      _toast('没找到绑定账户的目标「$goalName」');
+      return false;
+    }
+
+    final dekVer = KeyChain.instance.dekVersionOf(lid) ?? 1;
+    final fromCipher = KeyChain.instance
+        .encryptText(ledgerId: lid, plain: '转账·转出 → 储蓄目标');
+    final toCipher = KeyChain.instance
+        .encryptText(ledgerId: lid, plain: '转账·转入 ← 闲钱归集');
+    await ApiService.transfer(
+      fromAccountId: from.id,
+      toAccountId: goal.accountId!,
+      amount: amount,
+      fromNoteCipher: fromCipher,
+      toNoteCipher: toCipher,
+      noteDekVer: dekVer,
+    );
+    return true;
+  }
+
+  void _toast(String m) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
     }
   }
 
