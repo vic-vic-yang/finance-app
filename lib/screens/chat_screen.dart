@@ -319,6 +319,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (c.type == 'budget') {
       return _budgetCard(c.data);
     }
+    if (c.type == 'cfo_action') {
+      return _CfoActionCard(
+        proposalId: c.data['proposalId'] as String,
+        title: (c.data['title'] as String?) ?? '待确认操作',
+        body: (c.data['body'] as String?) ?? '',
+        requiresClient: (c.data['requiresClient'] as bool?) ?? false,
+        actionKind: (c.data['actionKind'] as String?) ?? '',
+      );
+    }
     // 未知类型：JSON 兜底
     return Container(
       padding: const EdgeInsets.all(8),
@@ -604,4 +613,96 @@ class _MerchantAgg {
   double amount = 0;
   int count = 0;
   _MerchantAgg({required this.name});
+}
+
+class _CfoActionCard extends StatefulWidget {
+  const _CfoActionCard({
+    required this.proposalId,
+    required this.title,
+    required this.body,
+    required this.requiresClient,
+    required this.actionKind,
+  });
+  final String proposalId, title, body, actionKind;
+  final bool requiresClient;
+  @override
+  State<_CfoActionCard> createState() => _CfoActionCardState();
+}
+
+class _CfoActionCardState extends State<_CfoActionCard> {
+  String _state = 'pending'; // pending|done|cancelled
+  bool _busy = false;
+
+  Future<void> _confirm() async {
+    if (widget.requiresClient) {
+      // Phase 1 不处理客户端动作（转目标在 Phase 3）
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('这个操作请到「复盘」页确认执行')));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ApiService.cfoDecide(widget.proposalId, 'approve');
+      setState(() => _state = 'done');
+    } catch (_) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('执行失败，请重试')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cancel() async {
+    setState(() => _busy = true);
+    try {
+      await ApiService.cfoDecide(widget.proposalId, 'dismiss');
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _state = 'cancelled';
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(widget.title,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.text1)),
+        if (widget.body.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(widget.body,
+              style: TextStyle(fontSize: 12, color: AppColors.text2)),
+        ],
+        const SizedBox(height: 12),
+        if (_state == 'pending')
+          Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _busy ? null : _confirm,
+                child: Text(_busy ? '处理中…' : '确认'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+                onPressed: _busy ? null : _cancel, child: const Text('取消')),
+          ])
+        else
+          Text(_state == 'done' ? '✅ 已执行' : '已取消',
+              style: TextStyle(fontSize: 12, color: AppColors.text3)),
+      ]),
+    );
+  }
 }
