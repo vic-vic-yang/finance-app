@@ -296,6 +296,18 @@ class ApiService {
         if (noteDekVer != null) 'noteDekVer': noteDekVer,
       });
 
+  static Future<Map<String, dynamic>> reconcileAccount({
+    required String id,
+    required double actualBalance,
+    String? noteCipher,
+    int? noteDekVer,
+  }) =>
+      _post('/accounts/$id/reconcile', {
+        'actualBalance': actualBalance,
+        if (noteCipher != null) 'noteCipher': noteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+      });
+
   // ── Categories ────────────────────────────────────────────
   static Future<Map<String, dynamic>> getCategories() => _get('/categories');
 
