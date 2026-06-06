@@ -7,6 +7,7 @@ import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
+import 'agreement_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -286,6 +287,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    const AgreementFooter(prefix: '登录即代表您已阅读并同意'),
                   ],
                 ),
               ),

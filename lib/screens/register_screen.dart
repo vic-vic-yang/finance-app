@@ -9,6 +9,7 @@ import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
+import 'agreement_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -336,6 +337,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    const AgreementFooter(prefix: '注册即代表您已阅读并同意'),
                   ],
                 ),
               ),

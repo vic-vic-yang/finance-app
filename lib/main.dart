@@ -11,6 +11,7 @@ import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/main_screen.dart';
 import 'screens/add_bill_screen.dart';
+import 'screens/welcome_screen.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/pending_dek_resolver.dart';
@@ -78,6 +79,7 @@ class FinanceApp extends StatelessWidget {
         initialRoute: '/splash',
         routes: {
           '/splash':  (_) => const _SplashScreen(),
+          '/welcome': (_) => const WelcomeScreen(),
           '/login':   (_) => const LoginScreen(),
           '/register':(_) => const RegisterScreen(),
           '/forgot-password': (_) => const ForgotPasswordScreen(),
@@ -109,7 +111,7 @@ class _SplashScreenState extends State<_SplashScreen> {
     await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     Navigator.pushReplacementNamed(
-        context, token != null ? '/main' : '/login');
+        context, token != null ? '/main' : '/welcome');
   }
 
   @override
@@ -119,7 +121,11 @@ class _SplashScreenState extends State<_SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('💰', style: TextStyle(fontSize: 64)),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.asset('assets/icon/app_icon.png',
+                    width: 84, height: 84, fit: BoxFit.cover),
+              ),
               const SizedBox(height: 16),
               Text('司库',
                   style: TextStyle(

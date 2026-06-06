@@ -1,7 +1,7 @@
 name: finance_app
 description: 司库 · 你的私人财务管家
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.0.4+5
 
 environment:
   sdk: ^3.5.0
@@ -47,6 +47,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/app_icon.png
 
 # ── App 图标（dart run flutter_launcher_icons）──────────────
 flutter_launcher_icons:
