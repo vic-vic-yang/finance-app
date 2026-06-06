@@ -175,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 22),
                     Text(
-                      '财记',
+                      '司库',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 30,

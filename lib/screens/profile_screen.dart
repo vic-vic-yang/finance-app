@@ -711,7 +711,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void _showAbout() {
     showAboutDialog(
       context: context,
-      applicationName: '财记',
+      applicationName: '司库',
       applicationVersion: 'v$kAppVersion',
       applicationIcon: const Padding(
         padding: EdgeInsets.all(8),

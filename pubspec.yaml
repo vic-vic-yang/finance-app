@@ -1,7 +1,7 @@
 name: finance_app
-description: 财记 · 个人财务管理
+description: 司库 · 你的私人财务管家
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.5.0
@@ -41,6 +41,29 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # 生成 App 图标 / 启动页（用 assets/icon/app_icon.png）
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.1
 
 flutter:
   uses-material-design: true
+
+# ── App 图标（dart run flutter_launcher_icons）──────────────
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+# ── 启动页（dart run flutter_native_splash:create）──────────
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/icon/app_icon.png"
+  android: true
+  ios: false
+  web: false
+  android_12:
+    color: "#FFFFFF"
+    image: "assets/icon/app_icon.png"

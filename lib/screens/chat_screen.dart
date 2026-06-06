@@ -164,7 +164,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: '财记助手'),
+      appBar: const AuraAppBar(title: '司库助手'),
       body: AuraBackground(
         child: Column(
           children: [

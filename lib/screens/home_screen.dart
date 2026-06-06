@@ -297,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen>
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: AiButton(
-              tooltip: '财记助手',
+              tooltip: '司库助手',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(

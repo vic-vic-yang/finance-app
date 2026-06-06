@@ -61,7 +61,7 @@ class FinanceApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: ThemeService.instance.revision,
       builder: (_, __) => MaterialApp(
-        title: '财记',
+        title: '司库',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.build(),
         // 中文本地化：让 DatePicker / TimePicker / 系统对话框都说中文
@@ -121,7 +121,7 @@ class _SplashScreenState extends State<_SplashScreen> {
             children: [
               const Text('💰', style: TextStyle(fontSize: 64)),
               const SizedBox(height: 16),
-              Text('财记',
+              Text('司库',
                   style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
