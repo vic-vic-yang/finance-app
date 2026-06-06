@@ -6,6 +6,8 @@ import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
+import 'agreement_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -135,127 +137,162 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 64),
-              // Logo
-              Center(
-                child: Container(
-                  width: 76,
-                  height: 76,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryLight,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: const Center(
-                    child: Text('💰', style: TextStyle(fontSize: 38)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: Text(
-                  '财记',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.text1,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ),
-              Center(
-                child: Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Text(
-                    '让财务一目了然',
-                    style: TextStyle(fontSize: 14, color: AppColors.text2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 52),
-              _label('用户名'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _userCtrl,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: '请输入用户名',
-                  prefixIcon: Icon(Icons.person_outline_rounded,
-                      color: AppColors.text2, size: 20),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _label('密码'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _passCtrl,
-                obscureText: _obscure,
-                onSubmitted: (_) => _login(),
-                decoration: InputDecoration(
-                  hintText: '请输入密码',
-                  prefixIcon: Icon(Icons.lock_outline_rounded,
-                      color: AppColors.text2, size: 20),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscure
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: AppColors.text2,
-                      size: 20,
-                    ),
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _loading ? null : _login,
-                child: _loading
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.onPrimary),
+      backgroundColor: AppColors.bg,
+      body: AuraBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 品牌 logo —— 主色渐变 + 柔和环境阴影
+                    Center(
+                      child: Container(
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: AppColors.primaryGradient,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          const SizedBox(width: 10),
-                          Text(_stage.isEmpty ? '登录中…' : _stage),
-                        ],
-                      )
-                    : const Text('登录'),
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/forgot-password'),
-                  child: Text('忘记密码？用恢复码找回',
+                          borderRadius: BorderRadius.circular(26),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withOpacity(0.22),
+                              blurRadius: 28,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Text('💰', style: TextStyle(fontSize: 40)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      '司库',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
-                          color: AppColors.text2, fontSize: 13)),
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text1,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '让财务一目了然',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: AppColors.text2),
+                    ),
+                    const SizedBox(height: 34),
+                    // 玻璃表单卡
+                    GlassCard(
+                      radius: 24,
+                      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('用户名'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _userCtrl,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              hintText: '请输入用户名',
+                              prefixIcon: Icon(Icons.person_outline_rounded,
+                                  color: AppColors.text2, size: 20),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _label('密码'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _passCtrl,
+                            obscureText: _obscure,
+                            onSubmitted: (_) => _login(),
+                            decoration: InputDecoration(
+                              hintText: '请输入密码',
+                              prefixIcon: Icon(Icons.lock_outline_rounded,
+                                  color: AppColors.text2, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppColors.text2,
+                                  size: 20,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: _loading ? null : _login,
+                              child: _loading
+                                  ? Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.onPrimary),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(_stage.isEmpty
+                                            ? '登录中…'
+                                            : _stage),
+                                      ],
+                                    )
+                                  : const Text('登录'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: TextButton(
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/forgot-password'),
+                        child: Text('忘记密码？用恢复码找回',
+                            style: TextStyle(
+                                color: AppColors.text2, fontSize: 13)),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('还没有账号？',
+                            style: TextStyle(
+                                color: AppColors.text2, fontSize: 14)),
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/register'),
+                          child: const Text('立即注册',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const AgreementFooter(prefix: '登录即代表您已阅读并同意'),
+                  ],
                 ),
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('还没有账号？',
-                      style: TextStyle(color: AppColors.text2, fontSize: 14)),
-                  TextButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/register'),
-                    child: const Text('立即注册',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),

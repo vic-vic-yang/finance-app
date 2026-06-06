@@ -8,6 +8,8 @@ import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
+import 'agreement_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -191,114 +193,156 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-              ),
-              const SizedBox(height: 16),
-              Text('创建账号',
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.text1,
-                      letterSpacing: -0.5)),
-              const SizedBox(height: 6),
-              Text('填写信息开始记账之旅',
-                  style: TextStyle(fontSize: 14, color: AppColors.text2)),
-              const SizedBox(height: 40),
-              _label('用户名'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _userCtrl,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: '2~20个字符',
-                  prefixIcon: Icon(Icons.person_outline_rounded,
-                      color: AppColors.text2, size: 20),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _label('密码'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _passCtrl,
-                obscureText: _obscure1,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: '至少6个字符',
-                  prefixIcon: Icon(Icons.lock_outline_rounded,
-                      color: AppColors.text2, size: 20),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscure1
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: AppColors.text2, size: 20,
+      backgroundColor: AppColors.bg,
+      body: AuraBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                            size: 20),
+                      ),
                     ),
-                    onPressed: () => setState(() => _obscure1 = !_obscure1),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _label('确认密码'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _confirmCtrl,
-                obscureText: _obscure2,
-                onSubmitted: (_) => _register(),
-                decoration: InputDecoration(
-                  hintText: '再次输入密码',
-                  prefixIcon: Icon(Icons.lock_outline_rounded,
-                      color: AppColors.text2, size: 20),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscure2
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: AppColors.text2, size: 20,
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text('创建账号',
+                          style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.text1,
+                              letterSpacing: -0.5)),
                     ),
-                    onPressed: () => setState(() => _obscure2 = !_obscure2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 36),
-              ElevatedButton(
-                onPressed: _loading ? null : _register,
-                child: _loading
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text('填写信息开始记账之旅',
+                          style: TextStyle(
+                              fontSize: 14, color: AppColors.text2)),
+                    ),
+                    const SizedBox(height: 28),
+                    GlassCard(
+                      radius: 24,
+                      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _label('用户名'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _userCtrl,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              hintText: '2~20个字符',
+                              prefixIcon: Icon(Icons.person_outline_rounded,
+                                  color: AppColors.text2, size: 20),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _label('密码'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _passCtrl,
+                            obscureText: _obscure1,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              hintText: '至少6个字符',
+                              prefixIcon: Icon(Icons.lock_outline_rounded,
+                                  color: AppColors.text2, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscure1
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppColors.text2, size: 20,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscure1 = !_obscure1),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _label('确认密码'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _confirmCtrl,
+                            obscureText: _obscure2,
+                            onSubmitted: (_) => _register(),
+                            decoration: InputDecoration(
+                              hintText: '再次输入密码',
+                              prefixIcon: Icon(Icons.lock_outline_rounded,
+                                  color: AppColors.text2, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscure2
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppColors.text2, size: 20,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscure2 = !_obscure2),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
                           SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AppColors.onPrimary)),
-                          const SizedBox(width: 10),
-                          Text(_stage.isEmpty ? '处理中…' : _stage),
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: _loading ? null : _register,
+                              child: _loading
+                                  ? Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppColors.onPrimary)),
+                                        const SizedBox(width: 10),
+                                        Text(_stage.isEmpty
+                                            ? '处理中…'
+                                            : _stage),
+                                      ],
+                                    )
+                                  : const Text('注册'),
+                            ),
+                          ),
                         ],
-                      )
-                    : const Text('注册'),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('已有账号？',
+                            style: TextStyle(
+                                color: AppColors.text2, fontSize: 14)),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('去登录',
+                              style:
+                                  TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const AgreementFooter(prefix: '注册即代表您已阅读并同意'),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('已有账号？',
-                      style: TextStyle(color: AppColors.text2, fontSize: 14)),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('去登录',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -10,21 +10,34 @@ import '../models/account.dart';
 import '../models/budget.dart';
 import '../models/ledger.dart';
 import '../models/insight.dart';
+import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
+import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
 import 'budgets_screen.dart';
+import 'cfo_screen.dart';
 import 'ledgers_screen.dart';
 import 'profile_screen.dart';
 import 'recurring_screen.dart';
+import 'tools/loan_calculator_screen.dart';
+import 'tools/tax_calculator_screen.dart';
+import 'tools/investment_calculator_screen.dart';
+import 'tools/exchange_screen.dart';
+import 'tools/stock_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onSwitchTab});
+
+  /// 由 MainScreen 注入:切换底部 tab(0=主页 1=统计 2=资讯 3=预算 4=目标)。
+  /// 为空时各入口回退为 push 新页面。
+  final void Function(int index)? onSwitchTab;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -62,6 +75,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// AI 洞察 feed
   List<AiInsight> _insights = [];
 
+  /// CFO 复盘待处理建议数量
+  int _cfoCount = 0;
+
+  /// 是否存在 critical 级 CFO 待办（用于首页卡醒目化）
+  bool _cfoHasCritical = false;
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +113,20 @@ class _HomeScreenState extends State<HomeScreen>
       final last  = DateTime(now.year, now.month + 1, 0).day;
       final end   = '${now.year}-${now.month.toString().padLeft(2, '0')}-${last.toString().padLeft(2, '0')}';
 
+      // CFO 复盘建议数量：与主数据并行拉取，失败不影响首页其他数据
+      final cfoFuture = ApiService.cfoProposals()
+          .then((res) {
+            final list = (res is List
+                ? res
+                : (res is Map
+                    ? (res['proposals'] ?? res['data'] ?? const [])
+                    : const [])) as List;
+            return list
+                .map((e) => Proposal.fromJson(e as Map<String, dynamic>))
+                .toList();
+          })
+          .catchError((_) => <Proposal>[]);
+
       final results = await Future.wait([
         ApiService.getAccounts(),
         ApiService.getBills(limit: 8),
@@ -105,6 +138,8 @@ class _HomeScreenState extends State<HomeScreen>
           (_) => <String, dynamic>{'insights': []},
         ),
       ]);
+
+      final cfoProps = await cfoFuture;
 
       if (!mounted) return;
       final ledgers = (results[4]['ledgers'] as List? ?? [])
@@ -126,6 +161,8 @@ class _HomeScreenState extends State<HomeScreen>
             .map((b) => Budget.fromJson(b as Map<String, dynamic>)).toList();
         _insights = (results[5]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
+        _cfoCount = cfoProps.length;
+        _cfoHasCritical = cfoProps.any((p) => p.severity == 'critical');
         _ledgers = ledgers;
         _currentLedger = ledgers.firstWhere(
           (l) => l.id == currentId,
@@ -163,6 +200,8 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
+              SliverToBoxAdapter(child: _cfoEntryCard()),
+              SliverToBoxAdapter(child: _quickToolsRow()),
               if (_insights.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '🤖 AI 洞察',
@@ -181,11 +220,7 @@ class _HomeScreenState extends State<HomeScreen>
                 _sectionTitleWithAction(
                   _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
                   '管理',
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const BudgetsScreen()),
-                  ),
+                  _goBudgets,
                 ),
                 SliverToBoxAdapter(child: _budgetTotalCard()),
               ],
@@ -247,10 +282,22 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       actions: [
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
+          IconButton(
+            tooltip: '导入流水',
+            icon: Icon(Icons.file_upload_outlined, color: AppColors.text1),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiImportsScreen()),
+              );
+              if (mounted) _load();
+            },
+          ),
+        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: AiButton(
-              tooltip: '财记助手',
+              tooltip: '司库助手',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -472,40 +519,52 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// 打开记一笔，返回后刷新首页
+  Future<void> _openAdd() async {
+    final result = await Navigator.pushNamed(context, '/add');
+    if (result == true && mounted) _load();
+  }
+
   Widget _summaryCard() {
     final now     = DateTime.now();
     final balance = _income - _expense;
     final fg      = AppColors.onPrimaryGradient;
     return Container(
-      margin: const EdgeInsets.only(top: 8, bottom: 4),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: AppColors.primaryGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: AppTheme.ambientShadow(
           opacity: 0.18,
-          blur: 36,
-          offset: const Offset(0, 16),
+          blur: 30,
+          offset: const Offset(0, 12),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${now.year}年${now.month}月结余',
-              style: TextStyle(color: fg.withOpacity(0.7), fontSize: 13)),
-          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(
+              child: Text('${now.year}年${now.month}月结余',
+                  style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
+            ),
+            // 记一笔入口
+            _recordButton(fg),
+          ]),
+          const SizedBox(height: 4),
           Text(fmtMoney(balance),
               style: TextStyle(
-                  color: fg, fontSize: 34,
-                  fontWeight: FontWeight.bold, letterSpacing: -1)),
-          const SizedBox(height: 18),
+                  color: fg, fontSize: 28,
+                  fontWeight: FontWeight.bold, letterSpacing: -0.8)),
+          const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _summaryItem('收入', _income)),
-            Container(width: 1, height: 36, color: fg.withOpacity(0.2)),
+            Container(width: 1, height: 28, color: fg.withOpacity(0.2)),
             Expanded(child: _summaryItem('支出', _expense)),
           ]),
         ],
@@ -513,19 +572,147 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// 结余卡上的「记一笔」按钮（半透明胶囊，落在渐变上）
+  Widget _recordButton(Color fg) {
+    return Material(
+      color: fg.withOpacity(0.18),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: _openAdd,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.add_rounded, size: 17, color: fg),
+            const SizedBox(width: 4),
+            Text('记一笔',
+                style: TextStyle(
+                    color: fg, fontSize: 13, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _summaryItem(String label, double amt) {
     final fg = AppColors.onPrimaryGradient;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
-          const SizedBox(height: 4),
+          Text(label, style: TextStyle(color: fg.withOpacity(0.7), fontSize: 11.5)),
+          const SizedBox(height: 3),
           Text(fmtMoney(amt),
               style: TextStyle(
-                  color: fg, fontSize: 16, fontWeight: FontWeight.w600)),
+                  color: fg, fontSize: 15, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+
+  /// CFO 复盘入口卡：显示待处理建议数，点进 [CfoScreen]
+  Widget _cfoEntryCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.all(16),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CfoScreen()),
+          );
+          if (mounted) _load();
+        },
+        child: Row(children: [
+          const Text('🧮', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CFO 复盘',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: _cfoHasCritical
+                            ? AppColors.expense
+                            : AppColors.text1)),
+                const SizedBox(height: 1),
+                Text(
+                  _cfoHasCritical
+                      ? '有 $_cfoCount 件需要注意'
+                      : (_cfoCount > 0
+                          ? '有 $_cfoCount 条建议待处理'
+                          : '一切正常，点开看看'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _cfoHasCritical
+                          ? AppColors.expense
+                          : AppColors.text2),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded,
+              color: _cfoHasCritical ? AppColors.expense : AppColors.text3),
+        ]),
+      ),
+    );
+  }
+
+  /// 首页快捷工具：一排横向入口，直接进各计算器/汇率/股票
+  Widget _quickToolsRow() {
+    final tools = <_QuickTool>[
+      _QuickTool('🏦', '贷款', (_) => const LoanCalculatorScreen()),
+      _QuickTool('🧾', '个税', (_) => const TaxCalculatorScreen()),
+      _QuickTool('📈', '定投', (_) => const InvestmentCalculatorScreen()),
+      _QuickTool('💱', '汇率', (_) => const ExchangeScreen()),
+      _QuickTool('🔍', '股票', (_) => const StockScreen()),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (final t in tools)
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: t.builder),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Center(
+                          child: Text(t.icon,
+                              style: const TextStyle(fontSize: 22)),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(t.label,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.text2)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -756,7 +943,19 @@ class _HomeScreenState extends State<HomeScreen>
   /// 是否有任何预算（手填总预算 或 分类预算）
   bool get _hasAnyBudget => _shownBudgetPeriod != null;
 
-  /// 首页只显示这一个卡片，点击进 BudgetsScreen
+  /// 进预算:优先切到底部「预算」tab(不开新页面),没有注入回调才 push。
+  void _goBudgets() {
+    if (widget.onSwitchTab != null) {
+      widget.onSwitchTab!(3); // 3 = 预算 tab
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+      );
+    }
+  }
+
+  /// 首页只显示这一个卡片，点击切到预算 tab
   Widget _budgetTotalCard() {
     final period = _shownBudgetPeriod ?? 'MONTHLY';
     final isYearly = period == 'YEARLY';
@@ -777,10 +976,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: GlassCard(
         radius: 16,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const BudgetsScreen()),
-        ),
+        onTap: _goBudgets,
         child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -870,6 +1066,14 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+}
+
+/// 首页快捷工具项
+class _QuickTool {
+  final String icon;
+  final String label;
+  final WidgetBuilder builder;
+  _QuickTool(this.icon, this.label, this.builder);
 }
 
 // ── 账户卡片 ──────────────────────────────────────────────────

@@ -181,7 +181,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// 浮动玻璃底部导航胶囊。FAB 居中嵌在缺口里。
+/// 浮动玻璃底部导航胶囊。等宽扁平项（数量由 labels 决定）。
 class GlassNavBar extends StatelessWidget {
   const GlassNavBar({
     super.key,
@@ -190,7 +190,6 @@ class GlassNavBar extends StatelessWidget {
     required this.icons,
     required this.activeIcons,
     required this.onTap,
-    this.fabGap = 64,
   });
 
   final int index;
@@ -198,7 +197,6 @@ class GlassNavBar extends StatelessWidget {
   final List<IconData> icons;
   final List<IconData> activeIcons;
   final ValueChanged<int> onTap;
-  final double fabGap;
 
   @override
   Widget build(BuildContext context) {
@@ -235,13 +233,7 @@ class GlassNavBar extends StatelessWidget {
                   ),
                 ),
                 child: Row(
-                  children: [
-                    _item(0),
-                    _item(1),
-                    SizedBox(width: fabGap),
-                    _item(2),
-                    _item(3),
-                  ],
+                  children: List.generate(labels.length, _item),
                 ),
               ),
             ),

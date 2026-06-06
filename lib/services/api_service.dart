@@ -6,6 +6,16 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'auth_service.dart';
 
+/// 后端返回非 2xx 状态码时抛出，让既有的 try/catch 能感知真实错误
+/// （此前 helper 只是 jsonDecode(body)，4xx/5xx 错误体被当成功返回）
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+  ApiException(this.statusCode, this.message);
+  @override
+  String toString() => message;
+}
+
 class ApiService {
   // ─── 后端地址配置 ─────────────────────────────────────────
   // 公网：通过 Cloudflare Tunnel 暴露，无需开端口、无需公网 IP
@@ -34,6 +44,27 @@ class ApiService {
   /// 所有请求超时：避免后端卡死时 spinner 转到天荒地老
   static const _kRequestTimeout = Duration(seconds: 20);
 
+  /// 解码响应；非 2xx 抛 [ApiException]。2xx 时返回解析后的 body（可能为 null）。
+  static dynamic _decode(http.Response res) {
+    dynamic body;
+    try {
+      body = res.body.isEmpty ? null : jsonDecode(res.body);
+    } catch (_) {
+      body = null;
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) return body;
+    String msg = '请求失败 (${res.statusCode})';
+    if (body is Map) {
+      final m = body['message'];
+      if (m is String && m.trim().isNotEmpty) {
+        msg = m;
+      } else if (m is List && m.isNotEmpty) {
+        msg = m.join('，');
+      }
+    }
+    throw ApiException(res.statusCode, msg);
+  }
+
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.getToken();
     return {
@@ -50,7 +81,21 @@ class ApiService {
         Uri.parse('$baseUrl$path').replace(queryParameters: params);
     final res =
         await _client.get(uri, headers: await _headers()).timeout(_kRequestTimeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  /// 像 [_get] 但不强制把响应转成 Map —— 用于返回 JSON 数组的端点
+  /// （如 GET /cfo/proposals 直接返回一个 proposal 数组）。
+  static Future<dynamic> _getRaw(
+    String path, {
+    Map<String, String>? params,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: params);
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(_kRequestTimeout);
+    return _decode(res);
   }
 
   static Future<Map<String, dynamic>> _post(
@@ -65,7 +110,8 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(timeout ?? _kRequestTimeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = _decode(res);
+    return (decoded is Map) ? decoded.cast<String, dynamic>() : <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> _put(
@@ -79,7 +125,8 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(_kRequestTimeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = _decode(res);
+    return (decoded is Map) ? decoded.cast<String, dynamic>() : <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> _patch(
@@ -93,14 +140,16 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(_kRequestTimeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = _decode(res);
+    return (decoded is Map) ? decoded.cast<String, dynamic>() : <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> _delete(String path) async {
     final res = await _client
         .delete(Uri.parse('$baseUrl$path'), headers: await _headers())
         .timeout(_kRequestTimeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
   }
 
   /// 应用启动后调一次：预热 TLS 连接，让用户后续登录第一次请求就走快路
@@ -280,6 +329,18 @@ class ApiService {
         if (note != null && note.isNotEmpty) 'note': note,
         if (fromNoteCipher != null) 'fromNoteCipher': fromNoteCipher,
         if (toNoteCipher != null) 'toNoteCipher': toNoteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+      });
+
+  static Future<Map<String, dynamic>> reconcileAccount({
+    required String id,
+    required double actualBalance,
+    String? noteCipher,
+    int? noteDekVer,
+  }) =>
+      _post('/accounts/$id/reconcile', {
+        'actualBalance': actualBalance,
+        if (noteCipher != null) 'noteCipher': noteCipher,
         if (noteDekVer != null) 'noteDekVer': noteDekVer,
       });
 
@@ -533,7 +594,8 @@ class ApiService {
     final streamed =
         await _client.send(req).timeout(const Duration(seconds: 60));
     final res = await http.Response.fromStream(streamed);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
   }
 
   /// 客户端把加密后的 bills 回填 → 后端入库 + 标记 done
@@ -632,4 +694,80 @@ class ApiService {
     required String target,
   }) =>
       _post('/ai/insights/dismiss', {'type': type, 'target': target});
+
+  // ─── CFO 复盘简报 ─────────────────────────────────────────
+  /// 拉取（惰性生成）当前账本的 pending 建议。
+  /// 后端直接返回一个 JSON 数组，故用 [_getRaw] 拿到 List；
+  /// 极端情况下若被包成 Map（{proposals|data: [...]}），调用方做兜底解析。
+  static Future<dynamic> cfoProposals() => _getRaw('/cfo/proposals');
+
+  /// 对某条建议做决定：approve | dismiss | snooze | resolve
+  static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
+      _post('/cfo/proposals/$id/decide', {'action': action});
+
+  // ─── App 自助升级 ─────────────────────────────────────────
+  /// 查最新版本（公开接口，无需登录）。返回 { buildNumber, version, notes, apkFile }
+  static Future<Map<String, dynamic>> getAppVersion() =>
+      _get('/app/version');
+
+  /// 最新 APK 下载地址（浏览器打开即下载安装）
+  static String get appDownloadUrl => '$baseUrl/app/download';
+
+  // ─── 财经资讯 ─────────────────────────────────────────────
+  /// 拉取最新财经新闻（后端按需补抓）。返回 { articles: [...] }
+  static Future<Map<String, dynamic>> getNews({int limit = 50}) =>
+      _get('/news', params: {'limit': '$limit'});
+
+  /// 强制后端立即重新抓取（下拉刷新）。返回 { inserted, articles }
+  static Future<Map<String, dynamic>> refreshNews() =>
+      _post('/news/refresh', {}, timeout: const Duration(seconds: 40));
+
+  /// 查询/更新某只股票：取最新数据 + 分析并保存快照。q 可为名称或代码。
+  /// 返回 { quote, analysis, news, updatedAt }。后端要解析+抓行情+分析，给足超时。
+  static Future<Map<String, dynamic>> getStock(String q) async {
+    final uri = Uri.parse('$baseUrl/tools/stock')
+        .replace(queryParameters: {'q': q});
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(const Duration(seconds: 50));
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  /// 我查询过的股票列表（按 symbol 最新一条）
+  static Future<List<dynamic>> getStocks() async {
+    final res = await _getRaw('/tools/stocks');
+    return (res is List) ? res : <dynamic>[];
+  }
+
+  /// 某股票保存的完整分析 + 历史（含最新价与持仓）
+  static Future<Map<String, dynamic>> getStockSaved(String symbol) =>
+      _get('/tools/stocks/$symbol');
+
+  /// 设置/更新某股票持仓（买入价、数量；≤0 清空）。返回 { holding }
+  static Future<Map<String, dynamic>> setStockHolding(
+    String symbol, {
+    required double buyPrice,
+    required double shares,
+  }) =>
+      _post('/tools/stocks/$symbol/holding',
+          {'buyPrice': buyPrice, 'shares': shares});
+
+  /// 新闻详情：后端抓正文 + LLM 要点分析（懒加载，首次较慢）。返回 { article }
+  static Future<Map<String, dynamic>> getNewsDetail(String id) async {
+    final uri = Uri.parse('$baseUrl/news/$id');
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(const Duration(seconds: 45));
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  // ─── 工具箱 · 汇率 ────────────────────────────────────────
+  /// 获取以 [base] 为基准的最新汇率表（后端代理 + 缓存）。
+  /// 返回 { base, updatedAt, rates: { USD: x, EUR: y, ... } }
+  static Future<Map<String, dynamic>> getExchangeRates({
+    String base = 'CNY',
+  }) =>
+      _get('/tools/exchange-rates', params: {'base': base});
 }

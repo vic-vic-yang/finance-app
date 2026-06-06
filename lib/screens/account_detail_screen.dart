@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../crypto/key_chain.dart';
 import '../widgets/glass.dart';
 import '../models/account.dart';
 import '../models/bill.dart';
@@ -224,6 +225,153 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     }
   }
 
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _openReconcileSheet(Account a) {
+    final ctrl = TextEditingController(text: a.balance.toStringAsFixed(2));
+    bool submitting = false;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (sheetCtx, setSheet) {
+            Future<void> confirm() async {
+              final v = double.tryParse(ctrl.text.trim());
+              if (v == null) {
+                _toast('请输入有效的余额');
+                return;
+              }
+              if (!KeyChain.instance.hasDek(a.ledgerId)) {
+                _toast('账本密钥未就绪');
+                return;
+              }
+              setSheet(() => submitting = true);
+              try {
+                final dekVer = KeyChain.instance.dekVersionOf(a.ledgerId) ?? 1;
+                final cipher = KeyChain.instance.encryptText(
+                  ledgerId: a.ledgerId,
+                  plain: '余额校准',
+                );
+                await ApiService.reconcileAccount(
+                  id: a.id,
+                  actualBalance: v,
+                  noteCipher: cipher,
+                  noteDekVer: dekVer,
+                );
+                if (Navigator.canPop(sheetCtx)) Navigator.pop(sheetCtx);
+                bumpRefresh();
+                await _loadAccount();
+                await _loadBills(refresh: true);
+                _toast('已校准');
+              } catch (_) {
+                setSheet(() => submitting = false);
+                _toast('校准失败');
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text('校准余额',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.text1)),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetCtx),
+                          icon: Icon(Icons.close_rounded,
+                              color: AppColors.text2),
+                        ),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        '当前余额  ¥${a.balance.toStringAsFixed(2)}',
+                        style:
+                            TextStyle(fontSize: 13, color: AppColors.text2),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: ctrl,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true, signed: true),
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.text1),
+                        decoration: InputDecoration(
+                          labelText: '实际余额',
+                          prefixText: '¥ ',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '将按差额生成一条「余额调整」账单（不计入收支统计），并把余额设为实际值。',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.text3,
+                            height: 1.4),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: submitting ? null : confirm,
+                          child: submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('确认'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loadingAccount && _account == null) {
@@ -251,11 +399,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final a = _account!;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('记一笔'),
+        tooltip: '记一笔',
+        child: const Icon(Icons.add_rounded),
         onPressed: () async {
           await Navigator.push(
             context,
@@ -285,6 +433,16 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             ),
           ],
         ),
+        // 校准余额：仅普通账户（信用卡/负债余额由欠款/贷款逻辑推导，不适用）
+        actions: (a.type != 'CREDIT' && a.type != 'DEBT')
+            ? [
+                IconButton(
+                  tooltip: '校准余额',
+                  icon: Icon(Icons.balance_rounded, color: AppColors.primary),
+                  onPressed: () => _openReconcileSheet(a),
+                ),
+              ]
+            : null,
       ),
       body: AuraBackground(
         child: RefreshIndicator(

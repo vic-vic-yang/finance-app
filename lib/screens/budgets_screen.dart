@@ -7,6 +7,7 @@ import '../models/category.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
 import '../widgets/glass.dart';
+import 'add_bill_screen.dart' show CategoryPickerSheet;
 import 'profile_screen.dart';
 
 /// 预算页面 —— 重新设计：
@@ -1201,6 +1202,7 @@ class _BudgetSheetState extends State<_BudgetSheet> {
   final _amountCtrl = TextEditingController();
   String _period = 'MONTHLY';
   String? _categoryId;
+  Category? _selectedCat; // 当前选中的分类（供选择器回显）
   List<Category> _categories = [];
   bool _saving = false;
   bool _loading = true;
@@ -1226,8 +1228,15 @@ class _BudgetSheetState extends State<_BudgetSheet> {
       setState(() {
         _categories = (res['categories'] as List? ?? [])
             .map((c) => Category.fromJson(c as Map<String, dynamic>))
-            .where((c) => c.type == 'expense' && c.isRoot)
+            .where((c) => c.type == 'expense') // L1 + L2 都要，支持选到二级
             .toList();
+        // 编辑态：按已有 categoryId 回显当前分类
+        for (final c in _categories) {
+          if (c.id == _categoryId) {
+            _selectedCat = c;
+            break;
+          }
+        }
         _loading = false;
       });
     } catch (_) {
@@ -1252,6 +1261,10 @@ class _BudgetSheetState extends State<_BudgetSheet> {
   Future<void> _save() async {
     if (_categoryId == null) {
       _toast('请选择分类');
+      return;
+    }
+    if (_categoryHasBudget(_categoryId!)) {
+      _toast('该分类在本周期已有预算');
       return;
     }
     final amount = double.tryParse(_amountCtrl.text);
@@ -1352,6 +1365,7 @@ class _BudgetSheetState extends State<_BudgetSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 顺序：周期 → 分类 → 金额
                     _label('周期'),
                     const SizedBox(height: 8),
                     Row(children: [
@@ -1370,18 +1384,7 @@ class _BudgetSheetState extends State<_BudgetSheet> {
                                 color: AppColors.primary)),
                       )
                     else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _categories.map((c) {
-                          final hasBudget = _categoryHasBudget(c.id);
-                          return _catChip(
-                            '${c.icon ?? "📂"} ${c.name}',
-                            c.id,
-                            disabled: hasBudget,
-                          );
-                        }).toList(),
-                      ),
+                      _categorySelector(),
                     const SizedBox(height: 16),
                     _label('预算金额'),
                     const SizedBox(height: 8),
@@ -1458,43 +1461,58 @@ class _BudgetSheetState extends State<_BudgetSheet> {
     );
   }
 
-  Widget _catChip(String label, String? value, {bool disabled = false}) {
-    final sel = _categoryId == value;
+  /// 「记一笔」同款分类选择器入口：点开双列（一级/二级）分类选择弹窗
+  Widget _categorySelector() {
+    final sel = _selectedCat;
+    final label =
+        sel == null ? '选择分类' : '${sel.icon ?? "📂"} ${sel.fullName}';
     return GestureDetector(
-      onTap: disabled
-          ? null
-          : () => setState(() => _categoryId = value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      onTap: _pickCategory,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: disabled
-              ? AppColors.bg
-              : (sel ? AppColors.primaryLight : AppColors.surface),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: sel ? AppColors.primary : AppColors.border),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 13,
-                  decoration:
-                      disabled ? TextDecoration.lineThrough : null,
-                  color: disabled
-                      ? AppColors.text3
-                      : (sel ? AppColors.primary : AppColors.text1),
-                  fontWeight:
-                      sel ? FontWeight.w600 : FontWeight.normal)),
-          if (disabled) ...[
-            const SizedBox(width: 4),
-            Text('已设',
-                style: TextStyle(fontSize: 10, color: AppColors.text3)),
-          ],
+        child: Row(children: [
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    color: sel == null ? AppColors.text3 : AppColors.text1,
+                    fontWeight:
+                        sel == null ? FontWeight.normal : FontWeight.w500)),
+          ),
+          Icon(Icons.chevron_right_rounded,
+              color: AppColors.text3, size: 20),
         ]),
       ),
     );
+  }
+
+  Future<void> _pickCategory() async {
+    final result = await showModalBottomSheet<Category>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => CategoryPickerSheet(
+        categories: _categories,
+        selectedId: _categoryId,
+        type: 'expense',
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _categoryId = result.id;
+        _selectedCat = result;
+      });
+    }
+    // 选择器里可能新建过分类 → 重拉一遍，保证回显与服务端一致
+    if (mounted) _loadCategories();
   }
 }
 

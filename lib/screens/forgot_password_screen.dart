@@ -7,6 +7,7 @@ import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
 import '../services/pending_dek_resolver.dart';
+import '../widgets/glass.dart';
 
 /// 忘记密码：用恢复码验证 → 重置密码 → 自动登录
 class ForgotPasswordScreen extends StatefulWidget {
@@ -161,87 +162,125 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: const Text('找回密码')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('用注册时保存的恢复码重置密码',
-                style: TextStyle(
-                    fontSize: 14, color: AppColors.text2, height: 1.5)),
-            const SizedBox(height: 4),
-            Text(
-              '· 恢复码格式如 "ABCD-1234-…"（32 位 hex，4 个一组）\n'
-              '· 不区分大小写\n'
-              '· 验证通过后将自动登录',
-              style: TextStyle(
-                  fontSize: 12, color: AppColors.text3, height: 1.6),
-            ),
-            const SizedBox(height: 24),
-            _label('用户名'),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _userCtrl,
-              decoration: const InputDecoration(
-                hintText: '注册时的用户名',
-                prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+      extendBodyBehindAppBar: true,
+      appBar: const AuraAppBar(title: '找回密码'),
+      body: AuraBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text('用注册时保存的恢复码重置密码',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.text2,
+                              height: 1.5)),
+                    ),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        '· 恢复码格式如 "ABCD-1234-…"（32 位 hex，4 个一组）\n'
+                        '· 不区分大小写\n'
+                        '· 验证通过后将自动登录',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.text3, height: 1.6),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    GlassCard(
+                      radius: 24,
+                      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('用户名'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _userCtrl,
+                            decoration: const InputDecoration(
+                              hintText: '注册时的用户名',
+                              prefixIcon:
+                                  Icon(Icons.person_outline_rounded, size: 18),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _label('恢复码'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _codeCtrl,
+                            decoration: const InputDecoration(
+                              hintText: 'ABCD-1234-…',
+                              prefixIcon:
+                                  Icon(Icons.shield_outlined, size: 18),
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                          ),
+                          const SizedBox(height: 16),
+                          _label('新密码'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _passCtrl,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              hintText: '至少 6 个字符',
+                              prefixIcon:
+                                  Icon(Icons.lock_outline_rounded, size: 18),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _label('确认新密码'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _confCtrl,
+                            obscureText: true,
+                            onSubmitted: (_) => _submit(),
+                            decoration: const InputDecoration(
+                              hintText: '再次输入',
+                              prefixIcon:
+                                  Icon(Icons.lock_outline_rounded, size: 18),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: _loading ? null : _submit,
+                              child: _loading
+                                  ? Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.onPrimary),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(_stage.isEmpty
+                                            ? '处理中…'
+                                            : _stage),
+                                      ],
+                                    )
+                                  : const Text('确认重置并登录'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-            _label('恢复码'),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _codeCtrl,
-              decoration: const InputDecoration(
-                hintText: 'ABCD-1234-…',
-                prefixIcon: Icon(Icons.shield_outlined, size: 18),
-              ),
-              textCapitalization: TextCapitalization.characters,
-            ),
-            const SizedBox(height: 16),
-            _label('新密码'),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _passCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(
-                hintText: '至少 6 个字符',
-                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _label('确认新密码'),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _confCtrl,
-              obscureText: true,
-              onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                hintText: '再次输入',
-                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
-              ),
-            ),
-            const SizedBox(height: 28),
-            ElevatedButton(
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: AppColors.onPrimary),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(_stage.isEmpty ? '处理中…' : _stage),
-                      ],
-                    )
-                  : const Text('确认重置并登录'),
-            ),
-          ],
+          ),
         ),
       ),
     );

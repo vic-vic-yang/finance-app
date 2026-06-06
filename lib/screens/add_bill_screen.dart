@@ -480,6 +480,14 @@ class _AddBillScreenState extends State<AddBillScreen>
     }
   }
 
+  /// header 渐变：在 accent 基础上压暗 18%，做出柔和的纵向景深
+  /// （与 Aura「渐变软卡」语言一致，不改变各类型的颜色识别）
+  List<Color> get _accentGradient {
+    final c = _accentColor;
+    final darker = Color.alphaBlend(Colors.black.withOpacity(0.18), c);
+    return [c, darker];
+  }
+
   // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -557,7 +565,20 @@ class _AddBillScreenState extends State<AddBillScreen>
   Widget _header(Color color) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      color: color,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: _accentGradient,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: SafeArea(
         bottom: false,
         child: Column(

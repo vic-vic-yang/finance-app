@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../core/theme_service.dart';
+import '../core/update_checker.dart';
 import '../widgets/glass.dart';
 import 'home_screen.dart';
 import 'stats_screen.dart';
 import 'budgets_screen.dart';
 import 'goals_screen.dart';
+import 'news_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -15,24 +17,31 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _index = 0;
 
-  static const _labels      = ['主页', '统计', '预算', '目标'];
+  @override
+  void initState() {
+    super.initState();
+    // 进入主界面后检查 App 更新（有新版弹提示），静默失败
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateChecker.check(context);
+    });
+  }
+
+  // tab 顺序：0=主页 1=统计 2=资讯 3=预算 4=目标
+  static const _labels      = ['主页', '统计', '资讯', '预算', '目标'];
   static const _icons       = [
     Icons.home_outlined,
     Icons.bar_chart_outlined,
+    Icons.newspaper_outlined,
     Icons.account_balance_wallet_outlined,
     Icons.savings_outlined,
   ];
   static const _activeIcons = [
     Icons.home_rounded,
     Icons.bar_chart_rounded,
+    Icons.newspaper_rounded,
     Icons.account_balance_wallet_rounded,
     Icons.savings_rounded,
   ];
-
-  Future<void> _openAdd() async {
-    final result = await Navigator.pushNamed(context, '/add');
-    if (result == true) setState(() {}); // trigger child refresh via key
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,8 +53,9 @@ class _MainScreenState extends State<MainScreen> {
         // 故意不用 const —— 每次 rebuild 创建新的 widget 实例，
         // 让 Flutter 重新走 build() 路径（State 由 AutomaticKeepAliveClientMixin 保活）
         final pages = <Widget>[
-          HomeScreen(),
+          HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
           StatsScreen(),
+          const NewsScreen(),
           BudgetsScreen(),
           GoalsScreen(),
         ];
@@ -55,12 +65,6 @@ class _MainScreenState extends State<MainScreen> {
           body: AuraBackground(
             child: IndexedStack(index: _index, children: pages),
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _openAdd,
-            child: const Icon(Icons.add, size: 28),
-          ),
-          floatingActionButtonLocation:
-              FloatingActionButtonLocation.centerDocked,
           bottomNavigationBar: GlassNavBar(
             index: _index,
             labels: _labels,

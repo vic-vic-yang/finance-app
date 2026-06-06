@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/refresh_bus.dart';
+import '../core/app_version.dart';
+import '../core/update_checker.dart';
 import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
@@ -16,6 +18,8 @@ import 'chat_screen.dart';
 import 'monthly_report_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
+import 'tools/tools_screen.dart';
+import 'news_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -169,6 +173,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           _tile(
+            icon: '📰',
+            title: '财经资讯',
+            subtitle: '每日全球财经要闻 · AI 中文摘要',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NewsScreen()),
+            ),
+          ),
+          _tile(
             icon: '💬',
             title: 'AI 对话助手',
             subtitle: '"这个月外卖花多少？" 这种自然提问',
@@ -188,6 +201,17 @@ class _ProfileScreenState extends State<ProfileScreen>
             },
           ),
           const SizedBox(height: 20),
+          _section('工具'),
+          _tile(
+            icon: '🧰',
+            title: '工具箱',
+            subtitle: '贷款 · 个税 · 复利定投 · 汇率换算',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ToolsScreen()),
+            ),
+          ),
+          const SizedBox(height: 20),
           _section('设置'),
           _tile(
             icon: '🎨',
@@ -202,9 +226,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             onTap: () => _showChangePasswordSheet(),
           ),
           _tile(
+            icon: '⬆️',
+            title: '检查更新',
+            subtitle: '当前版本 v$kAppVersion',
+            onTap: () => UpdateChecker.check(context, manual: true),
+          ),
+          _tile(
             icon: '🌐',
             title: '关于',
-            subtitle: '版本 1.0.0',
+            subtitle: '版本 v$kAppVersion',
             onTap: () => _showAbout(),
           ),
           const SizedBox(height: 20),
@@ -681,8 +711,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   void _showAbout() {
     showAboutDialog(
       context: context,
-      applicationName: '财记',
-      applicationVersion: '1.0.0',
+      applicationName: '司库',
+      applicationVersion: 'v$kAppVersion',
       applicationIcon: const Padding(
         padding: EdgeInsets.all(8),
         child: Text('💰', style: TextStyle(fontSize: 32)),
