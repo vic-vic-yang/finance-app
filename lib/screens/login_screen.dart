@@ -149,28 +149,27 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 品牌 logo —— 主色渐变 + 柔和环境阴影
+                    // 品牌 logo
                     Center(
                       child: Container(
-                        width: 84,
-                        height: 84,
+                        width: 88,
+                        height: 88,
+                        padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: AppColors.primaryGradient,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(26),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withOpacity(0.22),
+                              color: AppColors.primary.withOpacity(0.16),
                               blurRadius: 28,
                               offset: const Offset(0, 10),
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text('💰', style: TextStyle(fontSize: 40)),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(19),
+                          child: Image.asset('assets/icon/app_icon.png',
+                              fit: BoxFit.cover),
                         ),
                       ),
                     ),

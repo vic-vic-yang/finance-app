@@ -194,43 +194,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
+      extendBodyBehindAppBar: true,
+      appBar: const AuraAppBar(title: '创建账号'),
       body: AuraBackground(
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                            size: 20),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: Text('创建账号',
-                          style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.text1,
-                              letterSpacing: -0.5)),
-                    ),
-                    const SizedBox(height: 6),
                     Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: Text('填写信息开始记账之旅',
                           style: TextStyle(
                               fontSize: 14, color: AppColors.text2)),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
                     GlassCard(
                       radius: 24,
                       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
