@@ -233,44 +233,76 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
       appBar: AuraAppBar(
         title: '月报',
         actions: [
+          _periodToggle(),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: '重新生成',
             icon: const Icon(Icons.refresh),
             onPressed: _loading ? null : _generate,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: AuraBackground(
-        child: Column(
-        children: [
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('上月')),
-              ButtonSegment(value: 1, label: Text('本月')),
-            ],
-            selected: {_which},
-            onSelectionChanged: (s) {
-              setState(() => _which = s.first);
-              _generate();
-            },
+        child: _loading
+            ? const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 12),
+                    Text('AI 正在帮你写报告…'),
+                  ],
+                ),
+              )
+            : _error != null
+                ? Center(child: Text(_error!))
+                : _content(),
+      ),
+    );
+  }
+
+  /// header 上的紧凑「上月 / 本月」切换胶囊
+  Widget _periodToggle() {
+    Widget seg(int v, String label) {
+      final sel = _which == v;
+      return GestureDetector(
+        onTap: () {
+          if (_which == v) return;
+          setState(() => _which = v);
+          _generate();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: sel ? AppColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
           ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 12),
-                        Text('AI 正在帮你写报告…'),
-                      ],
-                    ),
-                  )
-                : _error != null
-                    ? Center(child: Text(_error!))
-                    : _content(),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+              color: sel ? AppColors.onPrimary : AppColors.text2,
+            ),
           ),
-        ],
+        ),
+      );
+    }
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border, width: 0.6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [seg(0, '上月'), seg(1, '本月')],
         ),
       ),
     );

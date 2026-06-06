@@ -5,6 +5,7 @@ import 'home_screen.dart';
 import 'stats_screen.dart';
 import 'budgets_screen.dart';
 import 'goals_screen.dart';
+import 'news_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -15,24 +16,22 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _index = 0;
 
-  static const _labels      = ['主页', '统计', '预算', '目标'];
+  // tab 顺序：0=主页 1=统计 2=资讯 3=预算 4=目标
+  static const _labels      = ['主页', '统计', '资讯', '预算', '目标'];
   static const _icons       = [
     Icons.home_outlined,
     Icons.bar_chart_outlined,
+    Icons.newspaper_outlined,
     Icons.account_balance_wallet_outlined,
     Icons.savings_outlined,
   ];
   static const _activeIcons = [
     Icons.home_rounded,
     Icons.bar_chart_rounded,
+    Icons.newspaper_rounded,
     Icons.account_balance_wallet_rounded,
     Icons.savings_rounded,
   ];
-
-  Future<void> _openAdd() async {
-    final result = await Navigator.pushNamed(context, '/add');
-    if (result == true) setState(() {}); // trigger child refresh via key
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +45,7 @@ class _MainScreenState extends State<MainScreen> {
         final pages = <Widget>[
           HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
           StatsScreen(),
+          const NewsScreen(),
           BudgetsScreen(),
           GoalsScreen(),
         ];
@@ -55,12 +55,6 @@ class _MainScreenState extends State<MainScreen> {
           body: AuraBackground(
             child: IndexedStack(index: _index, children: pages),
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _openAdd,
-            child: const Icon(Icons.add, size: 28),
-          ),
-          floatingActionButtonLocation:
-              FloatingActionButtonLocation.centerDocked,
           bottomNavigationBar: GlassNavBar(
             index: _index,
             labels: _labels,

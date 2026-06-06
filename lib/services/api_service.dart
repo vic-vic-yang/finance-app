@@ -704,4 +704,31 @@ class ApiService {
   /// 对某条建议做决定：approve | dismiss | snooze | resolve
   static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
       _post('/cfo/proposals/$id/decide', {'action': action});
+
+  // ─── 财经资讯 ─────────────────────────────────────────────
+  /// 拉取最新财经新闻（后端按需补抓）。返回 { articles: [...] }
+  static Future<Map<String, dynamic>> getNews({int limit = 50}) =>
+      _get('/news', params: {'limit': '$limit'});
+
+  /// 强制后端立即重新抓取（下拉刷新）。返回 { inserted, articles }
+  static Future<Map<String, dynamic>> refreshNews() =>
+      _post('/news/refresh', {}, timeout: const Duration(seconds: 40));
+
+  /// 新闻详情：后端抓正文 + LLM 要点分析（懒加载，首次较慢）。返回 { article }
+  static Future<Map<String, dynamic>> getNewsDetail(String id) async {
+    final uri = Uri.parse('$baseUrl/news/$id');
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(const Duration(seconds: 45));
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  // ─── 工具箱 · 汇率 ────────────────────────────────────────
+  /// 获取以 [base] 为基准的最新汇率表（后端代理 + 缓存）。
+  /// 返回 { base, updatedAt, rates: { USD: x, EUR: y, ... } }
+  static Future<Map<String, dynamic>> getExchangeRates({
+    String base = 'CNY',
+  }) =>
+      _get('/tools/exchange-rates', params: {'base': base});
 }

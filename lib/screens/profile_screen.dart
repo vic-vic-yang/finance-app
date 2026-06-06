@@ -16,6 +16,8 @@ import 'chat_screen.dart';
 import 'monthly_report_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
+import 'tools/tools_screen.dart';
+import 'news_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -169,6 +171,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           _tile(
+            icon: '📰',
+            title: '财经资讯',
+            subtitle: '每日全球财经要闻 · AI 中文摘要',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NewsScreen()),
+            ),
+          ),
+          _tile(
             icon: '💬',
             title: 'AI 对话助手',
             subtitle: '"这个月外卖花多少？" 这种自然提问',
@@ -186,6 +197,17 @@ class _ProfileScreenState extends State<ProfileScreen>
                 MaterialPageRoute(builder: (_) => ChatScreen(ledgerId: lid)),
               );
             },
+          ),
+          const SizedBox(height: 20),
+          _section('工具'),
+          _tile(
+            icon: '🧰',
+            title: '工具箱',
+            subtitle: '贷款 · 个税 · 复利定投 · 汇率换算',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ToolsScreen()),
+            ),
           ),
           const SizedBox(height: 20),
           _section('设置'),

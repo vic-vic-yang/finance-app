@@ -24,6 +24,9 @@ dependencies:
   file_picker: ^8.0.0+1
   http_parser: ^4.0.2
 
+  # 财经资讯：点新闻打开原文链接（外部浏览器）
+  url_launcher: ^6.2.5
+
   # ── 国密加密（数据加密 + 端到端共享） ───────────────────
   # SM2/SM3/SM4 国密算法（Flutter 实现，Dart 3+）
   gm_crypto: ^1.0.0
