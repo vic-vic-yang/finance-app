@@ -209,26 +209,31 @@ class GlassNavBar extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: br,
-            boxShadow: AppTheme.ambientShadow(
-              opacity: dark ? 0.0 : 0.10,
-              blur: 30,
-              offset: const Offset(0, 12),
-            ),
+            // 阴影加强 + 深色描边，让胶囊从背景里"浮"出来、边界清晰
+            boxShadow: [
+              BoxShadow(
+                color: (dark ? Colors.black : const Color(0xFF1B3022))
+                    .withOpacity(dark ? 0.45 : 0.16),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: ClipRRect(
             borderRadius: br,
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
+                  // 接近实底，避免下方内容透上来影响可读性
                   color: (dark ? const Color(0xFF1A1A1A) : Colors.white)
-                      .withOpacity(dark ? 0.55 : 0.70),
+                      .withOpacity(dark ? 0.90 : 0.95),
                   borderRadius: br,
                   border: Border.all(
                     color: dark
-                        ? Colors.white.withOpacity(0.10)
-                        : Colors.white.withOpacity(0.60),
+                        ? Colors.white.withOpacity(0.12)
+                        : AppColors.border.withOpacity(0.7),
                     width: 1,
                   ),
                 ),
@@ -363,17 +368,19 @@ class _ProfileAvatarState extends State<ProfileAvatar> {
   }
 }
 
-/// 渐变圆形「AI」按钮 —— 替代旧的 🤖 emoji，统一的 AI 入口图标。
+/// 圆形玻璃按钮 —— 顶栏统一风格的图标入口（AI 助手、导入等共用同一样式）。
 class AiButton extends StatelessWidget {
   const AiButton({
     super.key,
     required this.onTap,
     this.tooltip = 'AI 助手',
     this.size = 38,
+    this.icon = Icons.auto_awesome_rounded,
   });
   final VoidCallback onTap;
   final String tooltip;
   final double size;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -409,7 +416,7 @@ class AiButton extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Icon(
-                  Icons.auto_awesome_rounded,
+                  icon,
                   size: size * 0.5,
                   color: AppColors.primary,
                 ),

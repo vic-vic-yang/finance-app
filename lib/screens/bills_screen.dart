@@ -754,7 +754,7 @@ class _BillsScreenState extends State<BillsScreen>
           const SizedBox(height: 12),
           Text('还没有账单', style: TextStyle(color: AppColors.text2, fontSize: 16)),
           const SizedBox(height: 6),
-          Text('点击右下角 + 开始记账',
+          Text('去首页点结余卡的「记一笔」开始',
               style: TextStyle(color: AppColors.text2, fontSize: 13)),
         ]),
       );

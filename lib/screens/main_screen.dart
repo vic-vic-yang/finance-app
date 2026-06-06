@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/update_checker.dart';
 import '../widgets/glass.dart';
@@ -63,7 +64,33 @@ class _MainScreenState extends State<MainScreen> {
           backgroundColor: Colors.transparent,
           extendBody: true,
           body: AuraBackground(
-            child: IndexedStack(index: _index, children: pages),
+            child: Stack(
+              children: [
+                IndexedStack(index: _index, children: pages),
+                // 底部渐隐：内容滚到底淡出为背景色，避免透过悬浮导航栏周围的空隙看到内容
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 96,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.bg.withOpacity(0),
+                            AppColors.bg,
+                          ],
+                          stops: const [0.0, 0.72],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           bottomNavigationBar: GlassNavBar(
             index: _index,

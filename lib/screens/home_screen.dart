@@ -282,10 +282,10 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       actions: [
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
-          IconButton(
+          AiButton(
             tooltip: '导入流水',
-            icon: Icon(Icons.file_upload_outlined, color: AppColors.text1),
-            onPressed: () async {
+            icon: Icons.file_upload_outlined,
+            onTap: () async {
               await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AiImportsScreen()),
@@ -293,6 +293,8 @@ class _HomeScreenState extends State<HomeScreen>
               if (mounted) _load();
             },
           ),
+        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
+          const SizedBox(width: 10),
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -875,7 +877,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(children: [
           Text('🧾', style: TextStyle(fontSize: 40)),
           SizedBox(height: 10),
-          Text('还没有账单，点 + 开始记账',
+          Text('还没有账单，点上方「记一笔」开始',
               style: TextStyle(color: AppColors.text2, fontSize: 14)),
         ]),
       );
