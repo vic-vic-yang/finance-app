@@ -705,6 +705,14 @@ class ApiService {
   static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
       _post('/cfo/proposals/$id/decide', {'action': action});
 
+  // ─── App 自助升级 ─────────────────────────────────────────
+  /// 查最新版本（公开接口，无需登录）。返回 { buildNumber, version, notes, apkFile }
+  static Future<Map<String, dynamic>> getAppVersion() =>
+      _get('/app/version');
+
+  /// 最新 APK 下载地址（浏览器打开即下载安装）
+  static String get appDownloadUrl => '$baseUrl/app/download';
+
   // ─── 财经资讯 ─────────────────────────────────────────────
   /// 拉取最新财经新闻（后端按需补抓）。返回 { articles: [...] }
   static Future<Map<String, dynamic>> getNews({int limit = 50}) =>
@@ -713,6 +721,37 @@ class ApiService {
   /// 强制后端立即重新抓取（下拉刷新）。返回 { inserted, articles }
   static Future<Map<String, dynamic>> refreshNews() =>
       _post('/news/refresh', {}, timeout: const Duration(seconds: 40));
+
+  /// 查询/更新某只股票：取最新数据 + 分析并保存快照。q 可为名称或代码。
+  /// 返回 { quote, analysis, news, updatedAt }。后端要解析+抓行情+分析，给足超时。
+  static Future<Map<String, dynamic>> getStock(String q) async {
+    final uri = Uri.parse('$baseUrl/tools/stock')
+        .replace(queryParameters: {'q': q});
+    final res = await _client
+        .get(uri, headers: await _headers())
+        .timeout(const Duration(seconds: 50));
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  /// 我查询过的股票列表（按 symbol 最新一条）
+  static Future<List<dynamic>> getStocks() async {
+    final res = await _getRaw('/tools/stocks');
+    return (res is List) ? res : <dynamic>[];
+  }
+
+  /// 某股票保存的完整分析 + 历史（含最新价与持仓）
+  static Future<Map<String, dynamic>> getStockSaved(String symbol) =>
+      _get('/tools/stocks/$symbol');
+
+  /// 设置/更新某股票持仓（买入价、数量；≤0 清空）。返回 { holding }
+  static Future<Map<String, dynamic>> setStockHolding(
+    String symbol, {
+    required double buyPrice,
+    required double shares,
+  }) =>
+      _post('/tools/stocks/$symbol/holding',
+          {'buyPrice': buyPrice, 'shares': shares});
 
   /// 新闻详情：后端抓正文 + LLM 要点分析（懒加载，首次较慢）。返回 { article }
   static Future<Map<String, dynamic>> getNewsDetail(String id) async {

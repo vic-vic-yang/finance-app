@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme_service.dart';
+import '../core/update_checker.dart';
 import '../widgets/glass.dart';
 import 'home_screen.dart';
 import 'stats_screen.dart';
@@ -15,6 +16,15 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 进入主界面后检查 App 更新（有新版弹提示），静默失败
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateChecker.check(context);
+    });
+  }
 
   // tab 顺序：0=主页 1=统计 2=资讯 3=预算 4=目标
   static const _labels      = ['主页', '统计', '资讯', '预算', '目标'];

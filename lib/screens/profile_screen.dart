@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/refresh_bus.dart';
+import '../core/app_version.dart';
+import '../core/update_checker.dart';
 import '../crypto/crypto_bootstrap.dart';
 import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
@@ -224,9 +226,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             onTap: () => _showChangePasswordSheet(),
           ),
           _tile(
+            icon: '⬆️',
+            title: '检查更新',
+            subtitle: '当前版本 v$kAppVersion',
+            onTap: () => UpdateChecker.check(context, manual: true),
+          ),
+          _tile(
             icon: '🌐',
             title: '关于',
-            subtitle: '版本 1.0.0',
+            subtitle: '版本 v$kAppVersion',
             onTap: () => _showAbout(),
           ),
           const SizedBox(height: 20),
@@ -704,7 +712,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     showAboutDialog(
       context: context,
       applicationName: '财记',
-      applicationVersion: '1.0.0',
+      applicationVersion: 'v$kAppVersion',
       applicationIcon: const Padding(
         padding: EdgeInsets.all(8),
         child: Text('💰', style: TextStyle(fontSize: 32)),

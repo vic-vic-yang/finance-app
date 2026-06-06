@@ -5,6 +5,7 @@ import 'loan_calculator_screen.dart';
 import 'tax_calculator_screen.dart';
 import 'investment_calculator_screen.dart';
 import 'exchange_screen.dart';
+import 'stock_screen.dart';
 
 /// 工具箱：一组纯本地计算的财务小工具（不联网、不碰账本数据、零隐私风险）。
 class ToolsScreen extends StatelessWidget {
@@ -36,6 +37,12 @@ class ToolsScreen extends StatelessWidget {
         title: '汇率换算',
         subtitle: '最新汇率，常用币种实时换算',
         builder: (_) => const ExchangeScreen(),
+      ),
+      _ToolItem(
+        icon: '🔍',
+        title: '股票分析',
+        subtitle: '查询并收藏股票，看关键指标 + 评级 + AI 分析，随时更新',
+        builder: (_) => const StockScreen(),
       ),
     ];
 
