@@ -1,7 +1,7 @@
 name: finance_app
 description: 司库 · 你的私人财务管家
 publish_to: 'none'
-version: 1.0.7+8
+version: 1.0.8+9
 
 environment:
   sdk: ^3.5.0
@@ -60,7 +60,9 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/icon/app_icon.png"
 
 # ── 启动页（dart run flutter_native_splash:create）──────────
-# 深主题绿做底，logo（白底卡）居中，跟 Flutter 内 _SplashScreen 的径向光晕无缝衔接
+# 深主题绿做底 + logo 居中。Android 12+ 系统强制显示图标，无法去掉；
+# 所以策略是"无缝衔接"：Flutter 内 _SplashScreen 用同样的绿底 + 同位置 logo（静态，无入场动画），
+# 让原生闪屏直接过渡到设计页，不出现 logo 跳变/二次弹出。
 flutter_native_splash:
   color: "#1B3022"
   image: "assets/icon/app_icon.png"
@@ -70,3 +72,4 @@ flutter_native_splash:
   android_12:
     color: "#1B3022"
     image: "assets/icon/app_icon.png"
+    icon_background_color: "#1B3022"

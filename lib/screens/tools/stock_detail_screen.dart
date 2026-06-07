@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../widgets/glass.dart';
 import '../../services/api_service.dart';
+import '../../models/account.dart';
+import '../add_bill_screen.dart' show AccountPickerSheet;
 import 'tools_common.dart';
 
 /// 股票详情：展示保存的分析（或新查询结果），可「更新最新分析」。
@@ -569,6 +571,27 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: AppColors.text1)),
+            if (_holding?['accountId'] != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.autorenew_rounded,
+                      size: 11, color: AppColors.primary),
+                  const SizedBox(width: 2),
+                  Text('每日自动结算',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary)),
+                ]),
+              ),
+            ],
             const Spacer(),
             GestureDetector(
               onTap: _editHolding,
@@ -640,7 +663,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   Future<void> _editHolding() async {
     final sym = (_quote?['symbol'] ?? widget.symbol ?? '').toString();
     if (sym.isEmpty) return;
-    final result = await showModalBottomSheet<Map<String, double>?>(
+    final result = await showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
@@ -650,13 +673,16 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
       builder: (_) => _HoldingSheet(
         initBuyPrice: _d(_holding?['buyPrice']),
         initShares: _d(_holding?['shares']),
+        initAccountId: _holding?['accountId'] as String?,
       ),
     );
     if (result == null) return; // 取消
-    final bp = result['buyPrice'] ?? 0;
-    final sh = result['shares'] ?? 0;
+    final bp = (result['buyPrice'] as num?)?.toDouble() ?? 0;
+    final sh = (result['shares'] as num?)?.toDouble() ?? 0;
+    final accId = result['accountId'] as String?;
     try {
-      final res = await ApiService.setStockHolding(sym, buyPrice: bp, shares: sh);
+      final res = await ApiService.setStockHolding(sym,
+          buyPrice: bp, shares: sh, accountId: accId);
       if (!mounted) return;
       final h = res['holding'];
       setState(() => _holding = h is Map ? h.cast<String, dynamic>() : null);
@@ -896,11 +922,13 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 }
 
-/// 持仓编辑弹层：买入价 + 持有数量。清空两个值并保存可移除持仓。
+/// 持仓编辑弹层：买入价 + 持有数量 + 可选关联账户。清空价/量并保存可移除持仓。
 class _HoldingSheet extends StatefulWidget {
-  const _HoldingSheet({this.initBuyPrice, this.initShares});
+  const _HoldingSheet(
+      {this.initBuyPrice, this.initShares, this.initAccountId});
   final double? initBuyPrice;
   final double? initShares;
+  final String? initAccountId;
 
   @override
   State<_HoldingSheet> createState() => _HoldingSheetState();
@@ -909,6 +937,8 @@ class _HoldingSheet extends StatefulWidget {
 class _HoldingSheetState extends State<_HoldingSheet> {
   late final TextEditingController _priceCtrl;
   late final TextEditingController _sharesCtrl;
+  List<Account> _accounts = [];
+  Account? _account;
 
   @override
   void initState() {
@@ -918,6 +948,25 @@ class _HoldingSheetState extends State<_HoldingSheet> {
         : (v == v.truncateToDouble() ? v.toInt().toString() : v.toString());
     _priceCtrl = TextEditingController(text: f(widget.initBuyPrice));
     _sharesCtrl = TextEditingController(text: f(widget.initShares));
+    _loadAccounts();
+  }
+
+  Future<void> _loadAccounts() async {
+    try {
+      final res = await ApiService.getAccounts();
+      final list = (res['accounts'] as List? ?? [])
+          .map((a) => Account.fromJson(a as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _accounts = list;
+        if (widget.initAccountId != null) {
+          for (final a in list) {
+            if (a.id == widget.initAccountId) _account = a;
+          }
+        }
+      });
+    } catch (_) {}
   }
 
   @override
@@ -930,7 +979,25 @@ class _HoldingSheetState extends State<_HoldingSheet> {
   void _save() {
     final bp = double.tryParse(_priceCtrl.text.trim()) ?? 0;
     final sh = double.tryParse(_sharesCtrl.text.trim()) ?? 0;
-    Navigator.pop(context, {'buyPrice': bp, 'shares': sh});
+    Navigator.pop(context, {
+      'buyPrice': bp,
+      'shares': sh,
+      'accountId': _account?.id,
+    });
+  }
+
+  Future<void> _pickAccount() async {
+    final a = await showModalBottomSheet<Account>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) =>
+          AccountPickerSheet(accounts: _accounts, selectedId: _account?.id),
+    );
+    if (a != null) setState(() => _account = a);
   }
 
   @override
@@ -965,6 +1032,62 @@ class _HoldingSheetState extends State<_HoldingSheet> {
               labelText: '持有数量（股）',
               prefixIcon: Icon(Icons.numbers_rounded, size: 20),
             ),
+          ),
+          const SizedBox(height: 12),
+          // 关联账户（可选）
+          InkWell(
+            onTap: _pickAccount,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                Icon(Icons.link_rounded, size: 20, color: AppColors.text2),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('关联账户（自动结算）',
+                          style:
+                              TextStyle(fontSize: 11, color: AppColors.text3)),
+                      const SizedBox(height: 2),
+                      Text(
+                          _account != null
+                              ? '${_account!.typeEmoji} ${_account!.name}'
+                              : '不关联',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.text1)),
+                    ],
+                  ),
+                ),
+                if (_account != null)
+                  GestureDetector(
+                    onTap: () => setState(() => _account = null),
+                    child: Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.text3),
+                  )
+                else
+                  Icon(Icons.unfold_more_rounded,
+                      size: 18, color: AppColors.text3),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _account != null
+                ? '每天 15:00 收盘后按最新价计算当日盈亏，自动更新该账户余额（流水可见、不计收支）。'
+                : '关联一个账户后，可每天自动把当日盈亏记到账户、余额随行情更新。',
+            style: TextStyle(fontSize: 11, color: AppColors.text3, height: 1.4),
           ),
           const SizedBox(height: 18),
           Row(children: [

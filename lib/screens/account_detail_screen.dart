@@ -1,4 +1,6 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
@@ -456,6 +458,9 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           slivers: [
             SliverToBoxAdapter(child: _heroHeader(a)),
             SliverToBoxAdapter(child: _typeSpecificCard(a)),
+            // 资产变动走势：除信用卡外的账户都展示（按当前筛选区间的账单重建余额曲线）
+            if (a.type != 'CREDIT' && a.balanceVisible)
+              SliverToBoxAdapter(child: _trendCard(a)),
             if (a.balanceVisible) SliverToBoxAdapter(child: _summary()),
             SliverToBoxAdapter(
               child: Padding(
@@ -901,6 +906,123 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
               fontSize: 11, color: AppColors.text3, height: 1.4),
         ),
       ],
+    );
+  }
+
+  /// 由当前已加载账单（含筛选区间）反推每日末余额，作资产变动曲线。
+  /// 终点 = 账户当前余额；起点 = 当前余额 − 区间内所有账单净额。
+  List<_TrendPoint> _trendPoints() {
+    if (_bills.isEmpty || _account == null) return [];
+    final sorted = [..._bills]..sort((x, y) => x.date.compareTo(y.date));
+    final signedSum = sorted.fold<double>(
+        0.0, (s, b) => s + (b.isIncome ? b.amount : -b.amount));
+    double running = _account!.balance - signedSum;
+    final map = <String, double>{};
+    final order = <String>[];
+    for (final b in sorted) {
+      running += b.isIncome ? b.amount : -b.amount;
+      final k = DateFormat('yyyy-MM-dd').format(b.date);
+      if (!map.containsKey(k)) order.add(k);
+      map[k] = running;
+    }
+    return [for (final k in order) _TrendPoint(DateTime.parse(k), map[k]!)];
+  }
+
+  Widget _trendCard(Account a) {
+    final pts = _trendPoints();
+    if (pts.length < 2) return const SizedBox.shrink();
+    final spots = [
+      for (int i = 0; i < pts.length; i++)
+        FlSpot(i.toDouble(), pts[i].balance),
+    ];
+    final ys = pts.map((p) => p.balance).toList();
+    double minY = ys.reduce((a, b) => math.min(a, b));
+    double maxY = ys.reduce((a, b) => math.max(a, b));
+    final span = maxY - minY;
+    final pad = span == 0 ? (maxY.abs() * 0.1 + 1) : span * 0.18;
+    minY -= pad;
+    maxY += pad;
+    final delta = pts.last.balance - pts.first.balance;
+    final up = delta >= 0;
+    final lineColor = up ? AppColors.income : AppColors.expense;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Text('📈', style: TextStyle(fontSize: 15)),
+              const SizedBox(width: 6),
+              Text('资产变动',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text1)),
+              const Spacer(),
+              Text(
+                  '${up ? '+' : '-'}¥${_moneyFmt.format(delta.abs())}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: lineColor)),
+            ]),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 130,
+              child: LineChart(
+                LineChartData(
+                  minX: 0,
+                  maxX: (pts.length - 1).toDouble(),
+                  minY: minY,
+                  maxY: maxY,
+                  gridData: FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(show: false),
+                  lineTouchData: LineTouchData(enabled: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      curveSmoothness: 0.25,
+                      color: lineColor,
+                      barWidth: 2.5,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            lineColor.withOpacity(0.22),
+                            lineColor.withOpacity(0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(children: [
+              Text(DateFormat('yyyy/M/d').format(pts.first.date),
+                  style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
+              const Spacer(),
+              Text('当前 ¥${_moneyFmt.format(pts.last.balance)}',
+                  style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
+            ]),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1404,3 +1526,10 @@ class _BillRow extends StatelessWidget {
 }
 
 enum _DateMode { all, month, year, range }
+
+/// 资产曲线上的一个点：某天的末余额
+class _TrendPoint {
+  final DateTime date;
+  final double balance;
+  const _TrendPoint(this.date, this.balance);
+}

@@ -226,7 +226,7 @@ class _LoansScreenState extends State<LoansScreen> {
                       color: AppColors.text1)),
               const SizedBox(height: 3),
               Row(children: [
-                Text(DateFormat('M月d日').format(l.date),
+                Text(DateFormat('yyyy/M/d').format(l.date),
                     style: TextStyle(fontSize: 12, color: AppColors.text3)),
                 const SizedBox(width: 8),
                 if (l.settled)
@@ -345,11 +345,16 @@ class _VoucherThumbState extends State<_VoucherThumb> {
   }
 }
 
-/// 新增借出/借入弹层
+/// 新增 / 编辑借出借入弹层（传 edit 进入编辑模式：方向与关联账户不可改）
 class _LoanSheet extends StatefulWidget {
-  const _LoanSheet({required this.ledgerId, required this.accounts});
+  const _LoanSheet({
+    required this.ledgerId,
+    required this.accounts,
+    this.edit,
+  });
   final String ledgerId;
   final List<Account> accounts;
+  final Loan? edit;
   @override
   State<_LoanSheet> createState() => _LoanSheetState();
 }
@@ -365,10 +370,21 @@ class _LoanSheetState extends State<_LoanSheet> {
   bool _uploading = false;
   bool _saving = false;
 
+  bool get _isEdit => widget.edit != null;
+
   @override
   void initState() {
     super.initState();
-    if (widget.accounts.isNotEmpty) _account = widget.accounts.first;
+    final e = widget.edit;
+    if (e != null) {
+      _dir = e.isLend ? 0 : 1;
+      _amountCtrl.text = e.amount.toStringAsFixed(2);
+      _noteCtrl.text = e.noteOf(widget.ledgerId);
+      _date = e.date;
+      _voucherKey = e.voucherKey;
+    } else if (widget.accounts.isNotEmpty) {
+      _account = widget.accounts.first;
+    }
   }
 
   @override
@@ -419,15 +435,26 @@ class _LoanSheetState extends State<_LoanSheet> {
         noteCipher = KeyChain.instance.encryptText(
             ledgerId: widget.ledgerId, plain: _noteCtrl.text.trim());
       }
-      await ApiService.createLoan(
-        direction: _dir == 0 ? 'lend' : 'borrow',
-        amount: amount,
-        accountId: _account?.id,
-        noteCipher: noteCipher,
-        noteDekVer: dekVer,
-        voucherKey: _voucherKey,
-        date: _date,
-      );
+      if (_isEdit) {
+        await ApiService.updateLoan(
+          widget.edit!.id,
+          amount: amount,
+          noteCipher: noteCipher,
+          noteDekVer: dekVer,
+          voucherKey: _voucherKey,
+          date: _date,
+        );
+      } else {
+        await ApiService.createLoan(
+          direction: _dir == 0 ? 'lend' : 'borrow',
+          amount: amount,
+          accountId: _account?.id,
+          noteCipher: noteCipher,
+          noteDekVer: dekVer,
+          voucherKey: _voucherKey,
+          date: _date,
+        );
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (_) {
@@ -449,13 +476,38 @@ class _LoanSheetState extends State<_LoanSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('记一笔借贷',
+            Text(_isEdit ? '编辑借贷' : '记一笔借贷',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: AppColors.text1)),
             const SizedBox(height: 14),
-            _seg(),
+            if (_isEdit)
+              // 编辑模式：方向只读（改方向请删后重记）
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(children: [
+                  Icon(
+                      _dir == 0
+                          ? Icons.call_made_rounded
+                          : Icons.call_received_rounded,
+                      size: 16,
+                      color: AppColors.text2),
+                  const SizedBox(width: 8),
+                  Text(_dir == 0 ? '借出（别人欠我）' : '借入（我欠别人）',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.text1)),
+                ]),
+              )
+            else
+              _seg(),
             const SizedBox(height: 14),
             TextField(
               controller: _amountCtrl,
@@ -464,8 +516,11 @@ class _LoanSheetState extends State<_LoanSheet> {
               decoration: const InputDecoration(
                   labelText: '金额', prefixText: '¥ '),
             ),
-            const SizedBox(height: 12),
-            _accountRow(),
+            // 关联账户仅新建时可选（编辑不改资金流）
+            if (!_isEdit) ...[
+              const SizedBox(height: 12),
+              _accountRow(),
+            ],
             const SizedBox(height: 12),
             _dateRow(),
             const SizedBox(height: 12),
@@ -612,6 +667,8 @@ class _LoanSheetState extends State<_LoanSheet> {
             child: Image.memory(_voucherPreview!,
                 width: 48, height: 48, fit: BoxFit.cover),
           )
+        else if (_voucherKey != null)
+          _VoucherThumb(voucherKey: _voucherKey!, size: 48)
         else
           Container(
             width: 48,
@@ -701,6 +758,23 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
     }
   }
 
+  Future<void> _edit() async {
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _LoanSheet(
+        ledgerId: widget.ledgerId,
+        accounts: widget.accounts,
+        edit: widget.loan,
+      ),
+    );
+    if (ok == true && mounted) Navigator.pop(context, true);
+  }
+
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -749,6 +823,11 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
                       fontWeight: FontWeight.w600,
                       color: AppColors.text2)),
               const Spacer(),
+              IconButton(
+                onPressed: _busy ? null : _edit,
+                icon: Icon(Icons.edit_outlined,
+                    color: AppColors.text3, size: 20),
+              ),
               IconButton(
                 onPressed: _busy ? null : _delete,
                 icon: Icon(Icons.delete_outline_rounded,

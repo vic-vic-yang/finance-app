@@ -27,6 +27,8 @@ class _AccountsScreenState extends State<AccountsScreen>
   List<Account> _accounts = [];
   bool _loading = true;
   String? _currentLedgerId;
+  // 已折叠的分组键（分组标题可点击折叠/展开）
+  final Set<String> _collapsed = {};
 
   @override
   void initState() {
@@ -66,8 +68,6 @@ class _AccountsScreenState extends State<AccountsScreen>
     }
   }
 
-  double get _totalBalance =>
-      _accounts.fold(0.0, (s, a) => s + a.balance);
   double get _mineBalance =>
       _mineAccounts.fold(0.0, (s, a) => s + a.balance);
   double get _sharedBalance =>
@@ -121,66 +121,71 @@ class _AccountsScreenState extends State<AccountsScreen>
                   ),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('总资产',
-                        style: TextStyle(color: fg.withOpacity(0.7), fontSize: 13)),
-                    const SizedBox(height: 6),
-                    Text(
-                      fmtMoney(_totalBalance),
-                      style: TextStyle(
-                          color: fg,
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -1),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('共 ${_accounts.length} 个账户',
-                        style: TextStyle(
-                            color: fg.withOpacity(0.55), fontSize: 12)),
-                    // 分两部分：我的 / 共享
-                    if (_sharedAccounts.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Container(height: 1, color: fg.withOpacity(0.15)),
-                      const SizedBox(height: 14),
-                      Row(children: [
-                        Expanded(
-                          child: _assetPart('我的', _mineBalance,
-                              _mineAccounts.length, fg),
-                        ),
-                        Container(width: 1, height: 30, color: fg.withOpacity(0.15)),
-                        Expanded(
-                          child: _assetPart('共享', _sharedBalance,
-                              _sharedAccounts.length, fg),
-                        ),
-                      ]),
-                    ],
-                  ],
-                ),
+                child: _sharedAccounts.isEmpty
+                    // 无共享账户：只显示「我的资产」
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('我的资产',
+                              style: TextStyle(
+                                  color: fg.withOpacity(0.7), fontSize: 13)),
+                          const SizedBox(height: 6),
+                          Text(fmtMoney(_mineBalance),
+                              style: TextStyle(
+                                  color: fg,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -1)),
+                          const SizedBox(height: 4),
+                          Text('共 ${_mineAccounts.length} 个账户',
+                              style: TextStyle(
+                                  color: fg.withOpacity(0.55), fontSize: 12)),
+                        ],
+                      )
+                    // 有共享账户：我的资产 & 共享资产 并列（不再合并成总资产）
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _assetBig('我的资产', _mineBalance,
+                                _mineAccounts.length, fg),
+                          ),
+                          Container(
+                              width: 1, height: 52, color: fg.withOpacity(0.15)),
+                          Expanded(
+                            child: _assetBig('共享资产', _sharedBalance,
+                                _sharedAccounts.length, fg),
+                          ),
+                        ],
+                      ),
               );
             }),
           ),
         ),
         // —— 我的账户（按类型分组，组内新建在前）——
         ..._mineGroupedSlivers(),
-        // —— 共享账户 ——
+        // —— 共享账户（可折叠）——
         if (_sharedAccounts.isNotEmpty)
-          _sectionSliver('共享账户', _sharedAccounts.length, hint: '账本成员共用'),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _AccountTile(
-                account: _sharedAccounts[i],
-                onEdit: () => _showAccountSheet(context,
-                    account: _sharedAccounts[i]),
-                onDelete: () => _deleteAccount(_sharedAccounts[i]),
+          _groupHeaderSliver('🤝 共享账户', _sharedAccounts.length,
+              groupKey: 'SHARED',
+              collapsed: _collapsed.contains('SHARED'),
+              hint: '账本成员共用'),
+        if (_sharedAccounts.isNotEmpty && !_collapsed.contains('SHARED'))
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => _AccountTile(
+                  account: _sharedAccounts[i],
+                  onEdit: () => _showAccountSheet(context,
+                      account: _sharedAccounts[i]),
+                  onDelete: () => _deleteAccount(_sharedAccounts[i]),
+                ),
+                childCount: _sharedAccounts.length,
               ),
-              childCount: _sharedAccounts.length,
             ),
           ),
-        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
   }
@@ -217,11 +222,14 @@ class _AccountsScreenState extends State<AccountsScreen>
     final out = <Widget>[];
     for (final k in keys) {
       final list = groups[k]!;
-      out.add(_sectionSliver(
-          '${list.first.typeEmoji} ${list.first.typeLabel}', list.length));
-      // 信用卡/负债带信息条 → 整行大卡；其余 → 两列紧凑网格（省一半高度）
-      final rich = k == 'CREDIT' || k == 'DEBT';
-      if (rich) {
+      final collapsed = _collapsed.contains(k);
+      out.add(_groupHeaderSliver(
+          '${list.first.typeEmoji} ${list.first.typeLabel}', list.length,
+          groupKey: k, collapsed: collapsed));
+      if (collapsed) continue;
+      // 信用卡/负债（带信息条）+ 银行卡 → 整行大卡；其余 → 两列紧凑网格（省高度）
+      final fullWidth = k == 'CREDIT' || k == 'DEBT' || k == 'BANK';
+      if (fullWidth) {
         out.add(SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           sliver: SliverList(
@@ -261,43 +269,63 @@ class _AccountsScreenState extends State<AccountsScreen>
     return out;
   }
 
-  /// 总资产卡里「我的 / 共享」分栏
-  Widget _assetPart(String label, double value, int count, Color fg) => Padding(
-        padding: const EdgeInsets.only(right: 12),
+  /// 可折叠分组标题：点击折叠/展开，右侧带 chevron。
+  Widget _groupHeaderSliver(String title, int count,
+          {required String groupKey, required bool collapsed, String? hint}) =>
+      SliverToBoxAdapter(
+        child: InkWell(
+          onTap: () => setState(() {
+            if (!_collapsed.remove(groupKey)) _collapsed.add(groupKey);
+          }),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            child: Row(children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text2)),
+              const SizedBox(width: 6),
+              Text('· $count',
+                  style: TextStyle(fontSize: 12, color: AppColors.text3)),
+              if (hint != null) ...[
+                const SizedBox(width: 8),
+                Text(hint,
+                    style: TextStyle(fontSize: 11, color: AppColors.text3)),
+              ],
+              const Spacer(),
+              AnimatedRotation(
+                turns: collapsed ? -0.25 : 0, // 折叠时朝右
+                duration: const Duration(milliseconds: 180),
+                child: Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 22, color: AppColors.text3),
+              ),
+            ]),
+          ),
+        ),
+      );
+
+  /// 顶部卡「我的资产 / 共享资产」并列项
+  Widget _assetBig(String label, double value, int count, Color fg) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$label · $count 个',
-                style: TextStyle(color: fg.withOpacity(0.6), fontSize: 11.5)),
-            const SizedBox(height: 3),
+            Text(label,
+                style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12.5)),
+            const SizedBox(height: 5),
             Text(fmtMoney(value),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    color: fg, fontSize: 18, fontWeight: FontWeight.w700)),
+                    color: fg,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.6)),
+            const SizedBox(height: 3),
+            Text('$count 个账户',
+                style: TextStyle(color: fg.withOpacity(0.55), fontSize: 11.5)),
           ],
-        ),
-      );
-
-  Widget _sectionSliver(String title, int count, {String? hint}) =>
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
-          child: Row(children: [
-            Text(title,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text2)),
-            const SizedBox(width: 6),
-            Text('· $count',
-                style: TextStyle(fontSize: 12, color: AppColors.text3)),
-            if (hint != null) ...[
-              const Spacer(),
-              Text(hint,
-                  style: TextStyle(fontSize: 11, color: AppColors.text3)),
-            ],
-          ]),
         ),
       );
 
@@ -620,6 +648,16 @@ class _AccountTile extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppColors.text1)),
+            if (i.dueDate != null) ...[
+              const SizedBox(width: 10),
+              Text('还款日 ',
+                  style: TextStyle(fontSize: 11, color: AppColors.text2)),
+              Text(_md(i.dueDate!),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text1)),
+            ],
             const Spacer(),
             if (unpaid > 0)
               Container(
@@ -666,8 +704,6 @@ class _AccountTile extends StatelessWidget {
               if (paid > 0 && unpaid > 0)
                 _kv('已还', fmtMoney(paid)),
               if (ongoing > 0) _kv('未出账', fmtMoney(ongoing)),
-              if (i.dueDate != null)
-                _kv('还款日', _md(i.dueDate!)),
             ],
           ),
         ],

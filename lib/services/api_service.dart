@@ -747,6 +747,22 @@ class ApiService {
         if (noteDekVer != null) 'noteDekVer': noteDekVer,
       });
 
+  static Future<Map<String, dynamic>> updateLoan(
+    String id, {
+    double? amount,
+    String? noteCipher,
+    int? noteDekVer,
+    String? voucherKey,
+    DateTime? date,
+  }) =>
+      _patch('/loans/$id', {
+        if (amount != null) 'amount': amount,
+        if (noteCipher != null) 'noteCipher': noteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+        if (voucherKey != null) 'voucherKey': voucherKey,
+        if (date != null) 'date': date.toIso8601String(),
+      });
+
   static Future<Map<String, dynamic>> deleteLoan(String id) =>
       _delete('/loans/$id');
 
@@ -824,9 +840,13 @@ class ApiService {
     String symbol, {
     required double buyPrice,
     required double shares,
+    String? accountId, // 关联账户：传则开启每日自动结算当日盈亏
   }) =>
-      _post('/tools/stocks/$symbol/holding',
-          {'buyPrice': buyPrice, 'shares': shares});
+      _post('/tools/stocks/$symbol/holding', {
+        'buyPrice': buyPrice,
+        'shares': shares,
+        'accountId': accountId,
+      });
 
   /// 新闻详情：后端抓正文 + LLM 要点分析（懒加载，首次较慢）。返回 { article }
   static Future<Map<String, dynamic>> getNewsDetail(String id) async {

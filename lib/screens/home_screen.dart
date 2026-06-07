@@ -216,14 +216,6 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 SliverToBoxAdapter(child: _insightsList()),
               ],
-              if (_hasAnyBudget) ...[
-                _sectionTitleWithAction(
-                  _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
-                  '管理',
-                  _goBudgets,
-                ),
-                SliverToBoxAdapter(child: _budgetTotalCard()),
-              ],
               if (_accounts.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '我的账户',
@@ -237,6 +229,14 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(child: _accountsList()),
               ] else
                 SliverToBoxAdapter(child: _noAccount()),
+              if (_hasAnyBudget) ...[
+                _sectionTitleWithAction(
+                  _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
+                  '管理',
+                  _goBudgets,
+                ),
+                SliverToBoxAdapter(child: _budgetTotalCard()),
+              ],
               if (_recentBills.isEmpty)
                 ...[
                   _sectionTitle('最近账单'),
