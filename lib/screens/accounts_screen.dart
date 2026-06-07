@@ -68,6 +68,10 @@ class _AccountsScreenState extends State<AccountsScreen>
 
   double get _totalBalance =>
       _accounts.fold(0.0, (s, a) => s + a.balance);
+  double get _mineBalance =>
+      _mineAccounts.fold(0.0, (s, a) => s + a.balance);
+  double get _sharedBalance =>
+      _sharedAccounts.fold(0.0, (s, a) => s + a.balance);
 
   @override
   Widget build(BuildContext context) {
@@ -135,28 +139,31 @@ class _AccountsScreenState extends State<AccountsScreen>
                     Text('共 ${_accounts.length} 个账户',
                         style: TextStyle(
                             color: fg.withOpacity(0.55), fontSize: 12)),
+                    // 分两部分：我的 / 共享
+                    if (_sharedAccounts.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Container(height: 1, color: fg.withOpacity(0.15)),
+                      const SizedBox(height: 14),
+                      Row(children: [
+                        Expanded(
+                          child: _assetPart('我的', _mineBalance,
+                              _mineAccounts.length, fg),
+                        ),
+                        Container(width: 1, height: 30, color: fg.withOpacity(0.15)),
+                        Expanded(
+                          child: _assetPart('共享', _sharedBalance,
+                              _sharedAccounts.length, fg),
+                        ),
+                      ]),
+                    ],
                   ],
                 ),
               );
             }),
           ),
         ),
-        // —— 我的账户 ——
-        if (_mineAccounts.isNotEmpty) _sectionSliver('我的账户', _mineAccounts.length),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _AccountTile(
-                account: _mineAccounts[i],
-                onEdit: () => _showAccountSheet(context,
-                    account: _mineAccounts[i]),
-                onDelete: () => _deleteAccount(_mineAccounts[i]),
-              ),
-              childCount: _mineAccounts.length,
-            ),
-          ),
-        ),
+        // —— 我的账户（按类型分组，组内新建在前）——
+        ..._mineGroupedSlivers(),
         // —— 共享账户 ——
         if (_sharedAccounts.isNotEmpty)
           _sectionSliver('共享账户', _sharedAccounts.length, hint: '账本成员共用'),
@@ -182,6 +189,95 @@ class _AccountsScreenState extends State<AccountsScreen>
       _accounts.where((a) => !a.isShared).toList();
   List<Account> get _sharedAccounts =>
       _accounts.where((a) => a.isShared).toList();
+
+  // 类型分组顺序
+  static const _typeOrder = [
+    'CASH', 'BANK', 'VIRTUAL', 'INVESTMENT', 'CREDIT', 'INSURANCE', 'DEBT', 'OTHER',
+  ];
+
+  /// 归一化分组键（历史 ALIPAY/WECHAT 归到虚拟账户；未知归其他）
+  String _groupKey(String type) {
+    if (type == 'ALIPAY' || type == 'WECHAT') return 'VIRTUAL';
+    return _typeOrder.contains(type) ? type : 'OTHER';
+  }
+
+  /// 「我的账户」按类型分组渲染：固定类型顺序，组内新建在前（id 倒序≈时间倒序）
+  List<Widget> _mineGroupedSlivers() {
+    final groups = <String, List<Account>>{};
+    for (final a in _mineAccounts) {
+      (groups[_groupKey(a.type)] ??= <Account>[]).add(a);
+    }
+    for (final list in groups.values) {
+      list.sort((x, y) => y.id.compareTo(x.id)); // 最新优先
+    }
+    final keys = [
+      ..._typeOrder.where(groups.containsKey),
+      ...groups.keys.where((k) => !_typeOrder.contains(k)),
+    ];
+    final out = <Widget>[];
+    for (final k in keys) {
+      final list = groups[k]!;
+      out.add(_sectionSliver(
+          '${list.first.typeEmoji} ${list.first.typeLabel}', list.length));
+      // 信用卡/负债带信息条 → 整行大卡；其余 → 两列紧凑网格（省一半高度）
+      final rich = k == 'CREDIT' || k == 'DEBT';
+      if (rich) {
+        out.add(SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _AccountTile(
+                account: list[i],
+                onEdit: () => _showAccountSheet(context, account: list[i]),
+                onDelete: () => _deleteAccount(list[i]),
+              ),
+              childCount: list.length,
+            ),
+          ),
+        ));
+      } else {
+        out.add(SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          sliver: SliverGrid(
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 104,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _AccountGridCard(
+                account: list[i],
+                onEdit: () => _showAccountSheet(context, account: list[i]),
+                onDelete: () => _deleteAccount(list[i]),
+              ),
+              childCount: list.length,
+            ),
+          ),
+        ));
+      }
+    }
+    return out;
+  }
+
+  /// 总资产卡里「我的 / 共享」分栏
+  Widget _assetPart(String label, double value, int count, Color fg) => Padding(
+        padding: const EdgeInsets.only(right: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$label · $count 个',
+                style: TextStyle(color: fg.withOpacity(0.6), fontSize: 11.5)),
+            const SizedBox(height: 3),
+            Text(fmtMoney(value),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: fg, fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 
   Widget _sectionSliver(String title, int count, {String? hint}) =>
       SliverToBoxAdapter(
@@ -454,6 +550,24 @@ class _AccountTile extends StatelessWidget {
     );
   }
 
+  static (String, double, Color) balanceDisplayOf(Account account) {
+    if (account.isCredit) {
+      final owed = account.balance < 0 ? -account.balance : 0.0;
+      return ('欠款', owed.toDouble(),
+          owed > 0 ? AppColors.expense : AppColors.text1);
+    }
+    if (account.isDebt) {
+      final owed =
+          account.balance < 0 ? -account.balance : account.balance.abs();
+      return ('欠款', owed, owed > 0 ? AppColors.expense : AppColors.text1);
+    }
+    return (
+      '余额',
+      account.balance,
+      account.balance >= 0 ? AppColors.text1 : AppColors.expense
+    );
+  }
+
   Widget _infoBanner(AccountInfo info) {
     switch (info.kind) {
       case 'credit':
@@ -689,6 +803,125 @@ class _AccountTile extends StatelessWidget {
 
   String _md(DateTime d) =>
       '${d.month}月${d.day}日';
+}
+
+/// 紧凑两列网格卡：名字 + 余额（用于现金/银行卡/虚拟等无信息条的账户）
+class _AccountGridCard extends StatelessWidget {
+  const _AccountGridCard({
+    required this.account,
+    required this.onEdit,
+    required this.onDelete,
+  });
+  final Account account;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final (balLabel, balValue, balColor) =
+        _AccountTile.balanceDisplayOf(account);
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AccountDetailScreen(accountId: account.id),
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                      child: Text(account.typeEmoji,
+                          style: const TextStyle(fontSize: 18))),
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.more_vert_rounded,
+                        color: AppColors.text3, size: 18),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                          value: 'edit',
+                          child: Row(children: [
+                            Icon(Icons.edit_outlined,
+                                size: 18, color: AppColors.text2),
+                            const SizedBox(width: 10),
+                            const Text('编辑'),
+                          ])),
+                      PopupMenuItem(
+                          value: 'delete',
+                          child: Row(children: [
+                            Icon(Icons.delete_outline_rounded,
+                                size: 18, color: AppColors.expense),
+                            const SizedBox(width: 10),
+                            Text('删除',
+                                style: TextStyle(color: AppColors.expense)),
+                          ])),
+                    ],
+                    onSelected: (v) {
+                      if (v == 'edit') onEdit();
+                      if (v == 'delete') onDelete();
+                    },
+                  ),
+                ),
+              ]),
+              const Spacer(),
+              Text(account.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text1)),
+              const SizedBox(height: 2),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(fmtMoney(balValue),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: balColor)),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(balLabel,
+                      style:
+                          TextStyle(fontSize: 10.5, color: AppColors.text3)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Add/Edit account bottom sheet ─────────────────────────────

@@ -705,6 +705,81 @@ class ApiService {
   static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
       _post('/cfo/proposals/$id/decide', {'action': action});
 
+  // ─── 借贷往来 ─────────────────────────────────────────────
+  static Future<List<dynamic>> getLoans() async {
+    final res = await _getRaw('/loans');
+    return (res is List) ? res : <dynamic>[];
+  }
+
+  static Future<Map<String, dynamic>> getLoanSummary() =>
+      _get('/loans/summary');
+
+  static Future<Map<String, dynamic>> createLoan({
+    required String direction, // lend | borrow
+    required double amount,
+    String? accountId,
+    String? noteCipher,
+    int? noteDekVer,
+    String? voucherKey,
+    DateTime? date,
+  }) =>
+      _post('/loans', {
+        'direction': direction,
+        'amount': amount,
+        if (accountId != null) 'accountId': accountId,
+        if (noteCipher != null) 'noteCipher': noteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+        if (voucherKey != null) 'voucherKey': voucherKey,
+        if (date != null) 'date': date.toIso8601String(),
+      });
+
+  static Future<Map<String, dynamic>> repayLoan(
+    String id, {
+    required double amount,
+    String? accountId,
+    String? noteCipher,
+    int? noteDekVer,
+  }) =>
+      _post('/loans/$id/repay', {
+        'amount': amount,
+        if (accountId != null) 'accountId': accountId,
+        if (noteCipher != null) 'noteCipher': noteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+      });
+
+  static Future<Map<String, dynamic>> deleteLoan(String id) =>
+      _delete('/loans/$id');
+
+  /// 上传凭证图片，返回 { key }
+  static Future<Map<String, dynamic>> uploadVoucher(
+    List<int> bytes,
+    String filename,
+  ) async {
+    final uri = Uri.parse('$baseUrl/uploads/voucher');
+    final req = http.MultipartRequest('POST', uri);
+    final token = await AuthService.getToken();
+    if (token != null) req.headers['Authorization'] = 'Bearer $token';
+    req.files.add(http.MultipartFile.fromBytes('file', bytes,
+        filename: filename));
+    final streamed =
+        await _client.send(req).timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    final body = _decode(res);
+    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
+  }
+
+  /// 取凭证图片字节（带鉴权），用于 Image.memory 显示
+  static Future<List<int>?> fetchVoucher(String key) async {
+    try {
+      final res = await _client
+          .get(Uri.parse('$baseUrl/uploads/voucher/$key'),
+              headers: await _headers())
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode == 200) return res.bodyBytes;
+    } catch (_) {}
+    return null;
+  }
+
   // ─── App 自助升级 ─────────────────────────────────────────
   /// 查最新版本（公开接口，无需登录）。返回 { buildNumber, version, notes, apkFile }
   static Future<Map<String, dynamic>> getAppVersion() =>

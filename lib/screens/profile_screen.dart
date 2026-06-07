@@ -12,6 +12,7 @@ import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'accounts_screen.dart';
+import 'loans_screen.dart';
 import 'ai_imports_screen.dart';
 import 'bills_screen.dart';
 import 'chat_screen.dart';
@@ -143,6 +144,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const AccountsScreen()),
+            ),
+          ),
+          _tile(
+            icon: '🤝',
+            title: '借贷往来',
+            subtitle: '别人欠我 / 我欠别人，含还款与转账凭证',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LoansScreen()),
             ),
           ),
           _tile(

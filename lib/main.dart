@@ -98,43 +98,145 @@ class _SplashScreen extends StatefulWidget {
   State<_SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<_SplashScreen> {
+class _SplashScreenState extends State<_SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ac;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+
   @override
   void initState() {
     super.initState();
+    _ac = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900));
+    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
+    _scale = Tween<double>(begin: 0.88, end: 1.0).animate(
+        CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
+    _ac.forward();
     _check();
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
   }
 
   Future<void> _check() async {
     final token = await AuthService.getToken();
     if (!mounted) return;
-    await Future.delayed(const Duration(milliseconds: 300));
+    // 留足动画时间，整体观感更稳
+    await Future.delayed(const Duration(milliseconds: 750));
     if (!mounted) return;
     Navigator.pushReplacementNamed(
         context, token != null ? '/main' : '/welcome');
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) {
+    final grad = AppColors.primaryGradient;
+    final base = grad.first; // 深主题色（边缘）
+    // 中心光晕：主题浅色再掺一点白，从中心向外逐渐过渡到 base
+    final glow = Color.alphaBlend(Colors.white.withOpacity(0.16), grad.last);
+    final edge = Color.alphaBlend(Colors.black.withOpacity(0.18), base);
+    final fg = AppColors.onPrimaryGradient;
+
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(0, -0.18),
+            radius: 1.15,
+            colors: [glow, base, edge],
+            stops: const [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.asset('assets/icon/app_icon.png',
-                    width: 84, height: 84, fit: BoxFit.cover),
+              Center(
+                child: FadeTransition(
+                  opacity: _fade,
+                  child: ScaleTransition(
+                    scale: _scale,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // logo + 柔光外圈（中心亮 → 外围透明）
+                        Container(
+                          width: 132,
+                          height: 132,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                Colors.white.withOpacity(0.22),
+                                Colors.white.withOpacity(0.0),
+                              ],
+                            ),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 88,
+                              height: 88,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.22),
+                                    blurRadius: 28,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Image.asset('assets/icon/app_icon.png',
+                                    width: 88, height: 88, fit: BoxFit.cover),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                        Text('司库',
+                            style: TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.bold,
+                                color: fg,
+                                letterSpacing: 2)),
+                        const SizedBox(height: 8),
+                        Text('智能财务管家',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: fg.withOpacity(0.6),
+                                letterSpacing: 4)),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 16),
-              Text('司库',
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                      letterSpacing: -0.5)),
+              // 底部品牌签名
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 28,
+                child: FadeTransition(
+                  opacity: _fade,
+                  child: Text('SI·KU  ·  让每一笔钱都心中有数',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: fg.withOpacity(0.4),
+                          letterSpacing: 1.5)),
+                ),
+              ),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
 }
