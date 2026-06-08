@@ -295,7 +295,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(price == null ? '—' : price.toStringAsFixed(2),
+              Text(_fmtPrice(price),
                   style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w700,
@@ -306,7 +306,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
               const Spacer(),
               if (chg != null)
                 Text(
-                  '${up ? '+' : ''}${chg.toStringAsFixed(2)}  ${up ? '+' : ''}${chgPct?.toStringAsFixed(2) ?? '—'}%',
+                  '${up ? '+' : ''}${chg.toStringAsFixed(3)}  ${up ? '+' : ''}${chgPct?.toStringAsFixed(2) ?? '—'}%',
                   style: TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w700, color: color),
                 ),
@@ -386,7 +386,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
               Text(_fmtUpdated((_history[i]['at'] ?? '').toString()),
                   style: TextStyle(fontSize: 13, color: AppColors.text2)),
               const Spacer(),
-              Text('价 ${_fmtNum(_d(_history[i]['price']))}',
+              Text('价 ${_fmtPrice(_d(_history[i]['price']))}',
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -429,7 +429,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
           ToolResultRow(
             label: '目标均价',
             value:
-                '${tMean.toStringAsFixed(2)}${upside == null ? '' : '  (${upside >= 0 ? '+' : ''}${upside.toStringAsFixed(1)}%)'}',
+                '${_fmtPrice(tMean)}${upside == null ? '' : '  (${upside >= 0 ? '+' : ''}${upside.toStringAsFixed(1)}%)'}',
             emphasize: true,
             valueColor: upside == null
                 ? null
@@ -438,8 +438,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         if (tLow != null && tHigh != null)
           ToolResultRow(
               label: '目标区间',
-              value:
-                  '${tLow.toStringAsFixed(2)} ~ ${tHigh.toStringAsFixed(2)}'),
+              value: '${_fmtPrice(tLow)} ~ ${_fmtPrice(tHigh)}'),
         const SizedBox(height: 8),
         _recBars([
           ['强力买入', g('strongBuy'), AppColors.income],
@@ -635,7 +634,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _hItem('成本价', buyPrice.toStringAsFixed(2), AppColors.text2)),
+            Expanded(child: _hItem('成本价', _fmtPrice(buyPrice), AppColors.text2)),
             Expanded(
                 child: _hItem(
                     '持有数量',
@@ -903,6 +902,9 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 
   // ── 格式化 ────────────────────────────────────────────────
+  /// 股价：保留 3 位小数（部分股票按 0.001 跳动，2 位会算错金额）
+  String _fmtPrice(double? v) => v == null ? '—' : v.toStringAsFixed(3);
+
   String _fmtNum(double? v) => v == null
       ? '—'
       : (v == v.truncateToDouble() && v.abs() < 1000

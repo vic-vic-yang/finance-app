@@ -117,7 +117,8 @@ class Bill {
         account: BillAccount.fromJson(json['account'] as Map<String, dynamic>),
         noteCipher: json['noteCipher'] as String?,
         noteDekVer: (json['noteDekVer'] as num?)?.toInt() ?? 1,
-        date: DateTime.parse(json['date'] as String),
+        // 后端存的是 UTC，解析后转本地时区，否则显示的时分会差 8 小时（如晚上 21:05 显示成 13:05）
+        date: DateTime.parse(json['date'] as String).toLocal(),
         user: json['user'] is Map<String, dynamic>
             ? BillUser.fromJson(json['user'] as Map<String, dynamic>)
             : null,

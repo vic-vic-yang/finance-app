@@ -47,6 +47,8 @@ class _AddBillScreenState extends State<AddBillScreen>
   List<Account> _allAccounts = [];
   Category? _selectedCategory;
   Account? _selectedAccount;
+  /// 编辑他人记的、在其私人账户上的账单时锁定账户（避免误改成自己的账户）
+  bool _accountLocked = false;
   /// 转账目的地账户（可以是其他成员的私人账户）
   Account? _toAccount;
   bool _saving = false;
@@ -195,18 +197,22 @@ class _AddBillScreenState extends State<AddBillScreen>
           (c) => c.id == b.category.id,
           orElse: () => allCats.isNotEmpty ? allCats.first : Category(id: '', name: '', type: _type),
         );
-        initAcc = myAccounts.firstWhere(
+        // 账单的账户可能是其他成员的私人账户（不在"我的账户"里）。
+        // 用"全部账户(scope:all)"来解析真实账户回显；解析不到再用账单自带的账户信息兜底。
+        // 若不是自己的账户 → 锁定账户选择，避免编辑时把别人的账单误改到自己账户上。
+        final isMyAcc = myAccounts.any((a) => a.id == b.account.id);
+        initAcc = everyAccount.firstWhere(
           (a) => a.id == b.account.id,
-          orElse: () => myAccounts.isNotEmpty
-              ? myAccounts.first
-              : Account(
-                  id: '',
-                  ledgerId: '',
-                  nameCipher: null,
-                  type: 'CASH',
-                  balance: 0,
-                ),
+          orElse: () => Account(
+            id: b.account.id,
+            ledgerId: b.ledgerId,
+            nameCipher: b.account.nameCipher,
+            nameDekVer: b.account.nameDekVer,
+            type: b.account.type,
+            balance: 0,
+          ),
         );
+        _accountLocked = !isMyAcc;
       } else {
         final typed = allCats.where((c) => c.type == _type).toList();
         if (typed.isNotEmpty) initCat = typed.first;
@@ -523,8 +529,11 @@ class _AddBillScreenState extends State<AddBillScreen>
                                   _pillRow(
                                     label: '账户',
                                     icon: _selectedAccount?.typeEmoji ?? '💰',
-                                    value: _selectedAccount?.name ?? '选择账户',
+                                    value: _accountLocked
+                                        ? '${_selectedAccount?.name ?? '账户'}（他人账户·锁定）'
+                                        : (_selectedAccount?.name ?? '选择账户'),
                                     accent: accentColor,
+                                    locked: _accountLocked,
                                     onTap: _openAccountPicker,
                                   ),
                                 ],
@@ -735,6 +744,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     required String value,
     required Color accent,
     required VoidCallback onTap,
+    bool locked = false,
   }) {
     return Material(
       color: AppColors.surface,
@@ -769,11 +779,15 @@ class _AddBillScreenState extends State<AddBillScreen>
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.text1),
+                    color: locked ? AppColors.text2 : AppColors.text1),
               ),
             ),
-            Icon(Icons.unfold_more_rounded,
-                size: 18, color: AppColors.text3),
+            if (locked)
+              Icon(Icons.lock_outline_rounded,
+                  size: 16, color: AppColors.text3)
+            else
+              Icon(Icons.unfold_more_rounded,
+                  size: 18, color: AppColors.text3),
           ]),
         ),
       ),
@@ -814,6 +828,14 @@ class _AddBillScreenState extends State<AddBillScreen>
   }
 
   Future<void> _openAccountPicker() async {
+    // 他人记的、在其私人账户上的账单：锁定账户，不允许改到自己的账户
+    if (_accountLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('这是其他成员私人账户上的账单，账户不可修改'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     final result = await showModalBottomSheet<Account>(
       context: context,
       isScrollControlled: true,

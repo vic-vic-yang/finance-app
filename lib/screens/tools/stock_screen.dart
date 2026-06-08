@@ -188,7 +188,7 @@ class _StockScreenState extends State<StockScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(price == null ? '—' : price.toStringAsFixed(2),
+            Text(price == null ? '—' : price.toStringAsFixed(3),
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
