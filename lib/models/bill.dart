@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:intl/intl.dart';
 
 import '../crypto/key_chain.dart';
@@ -126,8 +128,24 @@ class Bill {
 
   /// 客户端用账本 DEK 解出来的备注
   String get note {
-    if (noteCipher == null) return '';
-    if (noteDekVer == 0) return '自动入账';
+    if (noteCipher == null || noteCipher!.isEmpty) return '';
+    // noteDekVer==0：系统/明文备注（服务端无法加密的自动账单）。
+    // noteCipher 存 UTF-8 明文；旧的"自动入账"为 0 字节占位。
+    if (noteDekVer == 0) {
+      try {
+        final bytes = base64Decode(noteCipher!);
+        if (bytes.isEmpty) return '自动入账';
+        return utf8.decode(bytes);
+      } catch (_) {
+        return '自动入账';
+      }
+    }
+    // 加密备注：空/过短密文（iv16+mac32 起步）视为无备注，避免显示"解密失败"
+    try {
+      if (base64Decode(noteCipher!).length < 48) return '';
+    } catch (_) {
+      return '';
+    }
     return KeyChain.instance.decryptText(
       ledgerId: ledgerId,
       cipherBase64: noteCipher!,

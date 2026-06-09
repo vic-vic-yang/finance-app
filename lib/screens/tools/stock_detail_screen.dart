@@ -643,9 +643,91 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                         : shares.toString(),
                     AppColors.text2)),
           ]),
+          _holdingAdvice(),
         ],
       ),
     );
+  }
+
+  /// AI 每日持仓决策建议（随每日结算生成；未生成时引导）
+  Widget _holdingAdvice() {
+    final adv = _holding?['advice'];
+    final hasAccount = _holding?['accountId'] != null;
+    if (adv is! Map) {
+      if (!hasAccount) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Row(children: [
+          Icon(Icons.schedule_rounded, size: 14, color: AppColors.text3),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('每天 15:00 收盘后会生成 AI 持仓建议',
+                style: TextStyle(fontSize: 11.5, color: AppColors.text3)),
+          ),
+        ]),
+      );
+    }
+    final action = (adv['action'] ?? '').toString();
+    final reason = (adv['reason'] ?? '').toString();
+    final at = _fmtUpdated((_holding?['adviceAt'] ?? '').toString());
+    final c = _actionColor(action);
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.psychology_outlined, size: 16, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text('AI 持仓建议',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text1)),
+            if (action.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: c.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(action,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: c)),
+              ),
+            ],
+            const Spacer(),
+            if (at.isNotEmpty)
+              Text(at, style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
+          ]),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(reason,
+                style: TextStyle(
+                    fontSize: 12.5, height: 1.55, color: AppColors.text2)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _actionColor(String a) {
+    if (a.contains('加仓') || a.contains('买')) return AppColors.income;
+    if (a.contains('清仓') || a.contains('减仓') || a.contains('止损')) {
+      return AppColors.expense;
+    }
+    if (a.contains('观望')) return AppColors.warning;
+    return AppColors.primary; // 持有
   }
 
   Widget _hItem(String label, String value, Color color) => Column(
