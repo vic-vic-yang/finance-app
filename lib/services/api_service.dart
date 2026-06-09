@@ -836,6 +836,14 @@ class ApiService {
       _get('/tools/stocks/$symbol');
 
   /// 设置/更新某股票持仓（买入价、数量；≤0 清空）。返回 { holding }
+  // ─── 每日机会股 ───────────────────────────────────────────
+  /// 最新一期「每日机会股」+ 板块解读
+  static Future<Map<String, dynamic>> getDailyPicks() => _get('/picks/today');
+
+  /// 手动触发生成（首次/补算用，幂等）
+  static Future<Map<String, dynamic>> runDailyPicks() =>
+      _post('/picks/run', {});
+
   static Future<Map<String, dynamic>> setStockHolding(
     String symbol, {
     required double buyPrice,

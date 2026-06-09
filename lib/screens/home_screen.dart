@@ -30,6 +30,7 @@ import 'tools/tax_calculator_screen.dart';
 import 'tools/investment_calculator_screen.dart';
 import 'tools/exchange_screen.dart';
 import 'tools/stock_screen.dart';
+import 'tools/daily_picks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onSwitchTab});
@@ -672,6 +673,7 @@ class _HomeScreenState extends State<HomeScreen>
       _QuickTool('📈', '定投', (_) => const InvestmentCalculatorScreen()),
       _QuickTool('💱', '汇率', (_) => const ExchangeScreen()),
       _QuickTool('🔍', '股票', (_) => const StockScreen()),
+      _QuickTool('🎯', '机会股', (_) => const DailyPicksScreen()),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
