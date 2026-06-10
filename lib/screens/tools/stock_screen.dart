@@ -13,15 +13,29 @@ class StockScreen extends StatefulWidget {
   State<StockScreen> createState() => _StockScreenState();
 }
 
-class _StockScreenState extends State<StockScreen> {
+class _StockScreenState extends State<StockScreen>
+    with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _list = [];
   bool _loading = true;
+  late final TabController _tab;
 
   @override
   void initState() {
     super.initState();
+    _tab = TabController(length: 2, vsync: this);
     _load();
   }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _holdings =>
+      _list.where((s) => s['held'] == true).toList();
+  List<Map<String, dynamic>> get _watch =>
+      _list.where((s) => s['held'] != true).toList();
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -80,14 +94,31 @@ class _StockScreenState extends State<StockScreen> {
           ),
           const SizedBox(width: 8),
         ],
+        bottom: TabBar(
+          controller: _tab,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.text3,
+          indicatorColor: AppColors.primary,
+          indicatorSize: TabBarIndicatorSize.label,
+          labelStyle:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          unselectedLabelStyle:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          tabs: [
+            Tab(text: '持仓 ${_holdings.length}'),
+            Tab(text: '关注 ${_watch.length}'),
+          ],
+        ),
       ),
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                color: AppColors.primary,
-                onRefresh: _load,
-                child: _list.isEmpty ? _empty() : _listView(),
+            : TabBarView(
+                controller: _tab,
+                children: [
+                  _tabList(_holdings, holding: true),
+                  _tabList(_watch, holding: false),
+                ],
               ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -101,15 +132,30 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  Widget _empty() => ListView(
+  Widget _tabList(List<Map<String, dynamic>> list, {required bool holding}) {
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _load,
+      child: list.isEmpty
+          ? _empty(holding: holding)
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+              itemCount: list.length,
+              itemBuilder: (_, i) => _row(list[i], holding: holding),
+            ),
+    );
+  }
+
+  Widget _empty({required bool holding}) => ListView(
         children: [
           const SizedBox(height: 100),
           Center(
             child: Column(
               children: [
-                const Text('📈', style: TextStyle(fontSize: 44)),
+                Text(holding ? '💼' : '📈',
+                    style: const TextStyle(fontSize: 44)),
                 const SizedBox(height: 12),
-                Text('还没有查询过股票',
+                Text(holding ? '还没有持仓' : '还没有关注的股票',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -118,8 +164,9 @@ class _StockScreenState extends State<StockScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Text(
-                    '点右下角「查询股票」，输入名称或代码（苹果 / AAPL / 600519）。'
-                    '查过的会存在这里，方便随时回看和更新分析。',
+                    holding
+                        ? '查询一只股票进入详情，点「添加持仓」填买入价和数量，就会出现在这里，自动算盈亏。'
+                        : '点右下角「查询股票」，输入名称或代码（苹果 / AAPL / 600519）。查过的会进入「关注」，方便随时回看与更新分析。',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 13, color: AppColors.text2, height: 1.6),
@@ -131,15 +178,7 @@ class _StockScreenState extends State<StockScreen> {
         ],
       );
 
-  Widget _listView() {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-      itemCount: _list.length,
-      itemBuilder: (_, i) => _row(_list[i]),
-    );
-  }
-
-  Widget _row(Map<String, dynamic> s) {
+  Widget _row(Map<String, dynamic> s, {bool holding = false}) {
     final name = ((s['nameZh'] ?? '').toString().trim().isNotEmpty)
         ? s['nameZh'].toString()
         : (s['name'] ?? s['symbol']).toString();
@@ -179,8 +218,11 @@ class _StockScreenState extends State<StockScreen> {
                 ],
               ]),
               const SizedBox(height: 3),
-              Text('更新于 ${_fmtTime((s['updatedAt'] ?? '').toString())}',
-                  style: TextStyle(fontSize: 11.5, color: AppColors.text3)),
+              if (holding)
+                _holdingLine(s, price)
+              else
+                Text('更新于 ${_fmtTime((s['updatedAt'] ?? '').toString())}',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.text3)),
             ],
           ),
         ),
@@ -207,6 +249,39 @@ class _StockScreenState extends State<StockScreen> {
         Icon(Icons.chevron_right_rounded, color: AppColors.text3),
       ]),
     );
+  }
+
+  /// 持仓行的盈亏摘要：成本 / 股数 / 总盈亏
+  Widget _holdingLine(Map<String, dynamic> s, double? price) {
+    final buyPrice =
+        (s['buyPrice'] is num) ? (s['buyPrice'] as num).toDouble() : null;
+    final shares =
+        (s['shares'] is num) ? (s['shares'] as num).toDouble() : null;
+    if (buyPrice == null || shares == null || buyPrice <= 0 || shares <= 0) {
+      return Text('持仓', style: TextStyle(fontSize: 11.5, color: AppColors.text3));
+    }
+    final shareStr =
+        shares == shares.truncateToDouble() ? shares.toInt().toString() : shares.toString();
+    if (price == null) {
+      return Text('$shareStr股 · 成本${buyPrice.toStringAsFixed(3)}',
+          style: TextStyle(fontSize: 11.5, color: AppColors.text3));
+    }
+    final pl = (price - buyPrice) * shares;
+    final plPct = buyPrice > 0 ? (price - buyPrice) / buyPrice * 100 : 0.0;
+    final c = pl >= 0 ? AppColors.income : AppColors.expense;
+    return Row(children: [
+      Flexible(
+        child: Text('$shareStr股·成本${buyPrice.toStringAsFixed(3)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11.5, color: AppColors.text3)),
+      ),
+      const SizedBox(width: 8),
+      Text(
+          '${pl >= 0 ? '+' : ''}¥${pl.abs() < 1e7 ? pl.toStringAsFixed(2) : pl.toStringAsFixed(0)} (${pl >= 0 ? '+' : ''}${plPct.toStringAsFixed(2)}%)',
+          style:
+              TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c)),
+    ]);
   }
 
   Widget _ratingChip(String r) {
