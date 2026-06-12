@@ -49,10 +49,5 @@ flutter {
 dependencies {
     // AGP 8.9 + compileSdk 36 要求 desugar 2.1.4+
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
-
-    // ── Google ML Kit 文字识别：中文脚本 ──────────────────────
-    // google_mlkit_text_recognition 插件默认只带拉丁字母；
-    // lib/widgets/ocr_input_sheet.dart 使用 TextRecognitionScript.chinese，
-    // 必须显式引入对应的 native 依赖，否则 R8 会报 Missing class。
-    implementation 'com.google.mlkit:text-recognition-chinese:16.0.1'
+    // 注：原 ML Kit 中文 OCR 依赖已移除（OCR 改用 LLM 多模态），省 ~33MB 包体
 }

@@ -15,11 +15,18 @@ class _DailyPicksScreenState extends State<DailyPicksScreen> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   bool _running = false;
+  bool _autoTried = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  String _todayStr() {
+    final n = DateTime.now();
+    String two(int x) => x.toString().padLeft(2, '0');
+    return '${n.year}-${two(n.month)}-${two(n.day)}';
   }
 
   Future<void> _load() async {
@@ -30,6 +37,12 @@ class _DailyPicksScreenState extends State<DailyPicksScreen> {
         _data = d;
         _loading = false;
       });
+      // 榜单不是今天的（凌晨没跑成）→ 自动补算一次，前台显示"生成中"
+      final td = (_data?['tradeDate'] ?? '').toString();
+      if (!_autoTried && !_running && td != _todayStr()) {
+        _autoTried = true;
+        _run();
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -72,6 +85,7 @@ class _DailyPicksScreenState extends State<DailyPicksScreen> {
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                         children: [
+                          if (_running) _generatingBanner(),
                           _headerCard(),
                           _memoryCard(),
                           const SizedBox(height: 14),
@@ -86,6 +100,28 @@ class _DailyPicksScreenState extends State<DailyPicksScreen> {
       ),
     );
   }
+
+  Widget _generatingBanner() => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(children: [
+          const SizedBox(
+            width: 15,
+            height: 15,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('正在生成今日榜单…（约 30–60 秒，下方先显示上一交易日）',
+                style: TextStyle(fontSize: 12.5, color: AppColors.text2)),
+          ),
+        ]),
+      );
 
   Widget _disclaimer() => Text(
         (_data?['disclaimer'] ?? '⚠️ 数据分析与参考信息，不构成投资建议，据此操作风险自负。')
