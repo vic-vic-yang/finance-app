@@ -603,14 +603,31 @@ class ApiService {
     String id,
     List<Map<String, dynamic>> bills, {
     List<Map<String, dynamic>> transfers = const [],
+    List<Map<String, dynamic>> loans = const [],
   }) =>
       // 后端是逐条事务写入，账单多时耗时较长，给足超时（默认 20s 会卡住大批量）
       _post('/ai/imports/$id/apply', {
         'bills': bills,
         if (transfers.isNotEmpty) 'transfers': transfers,
+        if (loans.isNotEmpty) 'loans': loans,
       }, timeout: const Duration(seconds: 120));
 
   // ─── 周期账单 / 订阅管家 ───────────────────────────────────
+  /// 把一条普通账单转为借贷或账户间转账（原地重分类，不重复扣钱）
+  static Future<Map<String, dynamic>> convertBill(
+    String id, {
+    required String to, // 'loan' | 'transfer'
+    String? toAccountId,
+    String? noteCipher,
+    int? noteDekVer,
+  }) =>
+      _post('/bills/$id/convert', {
+        'to': to,
+        if (toAccountId != null) 'toAccountId': toAccountId,
+        if (noteCipher != null) 'noteCipher': noteCipher,
+        if (noteDekVer != null) 'noteDekVer': noteDekVer,
+      });
+
   static Future<Map<String, dynamic>> recurringCandidates() =>
       _get('/recurring/candidates');
 

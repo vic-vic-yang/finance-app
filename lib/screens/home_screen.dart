@@ -16,6 +16,7 @@ import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
+import 'add_bill_screen.dart';
 import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
@@ -259,6 +260,15 @@ class _HomeScreenState extends State<HomeScreen>
                       bill: _recentBills[i],
                       showRecorder:
                           _currentLedger != null && _currentLedger!.isShared,
+                      onTap: () async {
+                        final ok = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  AddBillScreen(bill: _recentBills[i])),
+                        );
+                        if (ok == true && mounted) _load();
+                      },
                     ),
                     childCount: _recentBills.length,
                   ),
@@ -1177,11 +1187,16 @@ class _OthersAccountCard extends StatelessWidget {
 
 // ── 账单行 ────────────────────────────────────────────────────
 class _BillRow extends StatelessWidget {
-  const _BillRow({required this.bill, this.showRecorder = false});
+  const _BillRow(
+      {required this.bill, this.showRecorder = false, this.onTap});
   final Bill bill;
   final bool showRecorder;
+  final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
@@ -1232,22 +1247,29 @@ class _BillRow extends StatelessWidget {
                 ],
               ]),
               const SizedBox(height: 2),
-              Text(bill.account.nameOf(bill.ledgerId),
-                  style: TextStyle(fontSize: 12, color: AppColors.text2)),
+              Builder(builder: (_) {
+                final accName = bill.account.nameOf(bill.ledgerId);
+                return Text(
+                  bill.note.isEmpty ? accName : '$accName  ${bill.note}',
+                  style: TextStyle(fontSize: 12, color: AppColors.text2),
+                  overflow: TextOverflow.ellipsis,
+                );
+              }),
             ]),
           ),
+          const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(bill.amountText,
                 style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: bill.isIncome ? AppColors.income : AppColors.expense)),
             const SizedBox(height: 2),
-            Text(DateFormat('MM/dd').format(bill.date),
+            Text(DateFormat('MM/dd HH:mm').format(bill.date),
                 style: TextStyle(fontSize: 11, color: AppColors.text2)),
           ]),
         ]),
-      );
+      ));
 }
 
 // ── 账本快速切换 sheet ──────────────────────────────────────

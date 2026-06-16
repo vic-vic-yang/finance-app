@@ -133,6 +133,7 @@ class AiDraft {
   final String? fundingHint; // 收/付款方式原始串
   final String direction;    // 'expense' / 'income' / 'transfer'
   final String? counterparty;
+  final double? balance;     // 银行联机余额（去重 + 校准用）
 
   AiDraft({
     required this.type,
@@ -146,6 +147,7 @@ class AiDraft {
     this.fundingHint,
     this.direction = 'expense',
     this.counterparty,
+    this.balance,
   });
 
   factory AiDraft.fromJson(Map<String, dynamic> j) => AiDraft(
@@ -162,6 +164,7 @@ class AiDraft {
         fundingHint: j['fundingHint'] as String?,
         direction: (j['direction'] as String?) ?? 'expense',
         counterparty: j['counterparty'] as String?,
+        balance: (j['balance'] as num?)?.toDouble(),
       );
 
   bool get isIncome => type == 'income';

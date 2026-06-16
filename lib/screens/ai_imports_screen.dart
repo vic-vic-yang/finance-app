@@ -225,6 +225,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
               if (d.externalId != null) 'externalId': d.externalId,
               'source': _sourceOf(item),
               'isTransfer': true,
+              if (d.balance != null) 'bankBalance': d.balance,
             });
             bills.add({
               'accountId': toId,
@@ -254,6 +255,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
               'date': d.date.toIso8601String(),
               if (d.externalId != null) 'externalId': d.externalId,
               'source': _sourceOf(item),
+              if (d.balance != null) 'bankBalance': d.balance,
             });
           }
         } else {
@@ -269,6 +271,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
             'date': d.date.toIso8601String(),
             if (d.externalId != null) 'externalId': d.externalId,
             'source': _sourceOf(item),
+            if (d.balance != null) 'bankBalance': d.balance,
           });
         }
       }

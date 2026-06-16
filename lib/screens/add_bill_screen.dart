@@ -610,18 +610,45 @@ class _AddBillScreenState extends State<AddBillScreen>
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.file_upload_rounded,
-                      color: Colors.white70, size: 22),
-                  tooltip: 'AI 智能导入',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const AiImportsScreen()),
-                    );
-                  },
-                ),
+                if (widget.bill != null)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_horiz_rounded,
+                        color: Colors.white70, size: 22),
+                    tooltip: '更多',
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    onSelected: (v) {
+                      if (v == 'loan') _convertToLoan();
+                      if (v == 'transfer') _convertToTransfer();
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'loan',
+                          child: Row(children: [
+                            Text('🤝  '),
+                            Text('转为借贷'),
+                          ])),
+                      PopupMenuItem(
+                          value: 'transfer',
+                          child: Row(children: [
+                            Text('🔄  '),
+                            Text('转为账户间转账'),
+                          ])),
+                    ],
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.file_upload_rounded,
+                        color: Colors.white70, size: 22),
+                    tooltip: 'AI 智能导入',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AiImportsScreen()),
+                      );
+                    },
+                  ),
               ]),
             ),
             TabBar(
@@ -648,7 +675,11 @@ class _AddBillScreenState extends State<AddBillScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // 点金额区域 → 收起系统键盘(备注的)，露出下方的金额小键盘
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
@@ -713,6 +744,7 @@ class _AddBillScreenState extends State<AddBillScreen>
                               ]),
                         ),
                     ],
+                  ),
                   ),
                   // 算式（仅在多项时才显示）
                   if (_hasExpression)
@@ -792,6 +824,69 @@ class _AddBillScreenState extends State<AddBillScreen>
         ),
       ),
     );
+  }
+
+  // ── 转为借贷 / 账户间转账（原地重分类，不重复扣钱）───────────
+  Future<void> _convertToLoan() async {
+    final b = widget.bill;
+    if (b == null) return;
+    final isExpense = b.type == 'expense';
+    final dir = isExpense ? '借出（别人欠我·应收）' : '借入（我欠别人·应付）';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('转为借贷'),
+        content: Text(
+            '这笔将记入「借贷往来」：$dir。\n账户金额不变（已扣过），原账单转为转账类、不再计入收支。确定？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确定')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ApiService.convertBill(b.id, to: 'loan');
+      if (!mounted) return;
+      bumpRefresh();
+      Navigator.pop(context, true);
+    } catch (_) {
+      _toast('转换失败，请重试');
+    }
+  }
+
+  Future<void> _convertToTransfer() async {
+    final b = widget.bill;
+    if (b == null) return;
+    final others =
+        _allAccounts.where((a) => a.id != b.account.id).toList();
+    if (others.isEmpty) {
+      _toast('没有可选的对端账户');
+      return;
+    }
+    final dest = await showModalBottomSheet<Account>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AccountPickerSheet(accounts: others, selectedId: null),
+    );
+    if (dest == null) return;
+    try {
+      await ApiService.convertBill(b.id, to: 'transfer', toAccountId: dest.id);
+      if (!mounted) return;
+      bumpRefresh();
+      Navigator.pop(context, true);
+    } catch (_) {
+      _toast('转换失败，请重试');
+    }
   }
 
   // ── Pickers ───────────────────────────────────────────────────
