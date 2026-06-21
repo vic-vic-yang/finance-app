@@ -14,13 +14,12 @@ import '../widgets/glass.dart';
 import 'accounts_screen.dart';
 import 'loans_screen.dart';
 import 'ai_imports_screen.dart';
-import 'bills_screen.dart';
 import 'chat_screen.dart';
 import 'monthly_report_screen.dart';
+import 'goals_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
 import 'tools/tools_screen.dart';
-import 'news_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -127,100 +126,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           const SizedBox(height: 16),
           _ledgerBanner(),
           const SizedBox(height: 20),
-          _section('财务'),
-          _tile(
-            icon: '🧾',
-            title: '账单明细',
-            subtitle: '查看所有收支记录',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const BillsScreen()),
-            ),
-          ),
-          _tile(
-            icon: '💳',
-            title: '账户管理',
-            subtitle: '现金、银行卡、支付宝、微信、信用卡…',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AccountsScreen()),
-            ),
-          ),
-          _tile(
-            icon: '🤝',
-            title: '借贷往来',
-            subtitle: '别人欠我 / 我欠别人，含还款与转账凭证',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const LoansScreen()),
-            ),
-          ),
-          _tile(
-            icon: '🤖',
-            title: 'AI 智能导入',
-            subtitle: '上传图片 / PDF / Excel / CSV，AI 自动补账单',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AiImportsScreen()),
-            ),
-          ),
-          _tile(
-            icon: '📋',
-            title: '订阅管家',
-            subtitle: '周期账单 + AI 自动识别',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RecurringScreen()),
-            ),
-          ),
-          _tile(
-            icon: '📊',
-            title: '月报',
-            subtitle: '本月 / 上月 AI 总结',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MonthlyReportScreen()),
-            ),
-          ),
-          _tile(
-            icon: '📰',
-            title: '财经资讯',
-            subtitle: '每日全球财经要闻 · AI 中文摘要',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NewsScreen()),
-            ),
-          ),
-          _tile(
-            icon: '💬',
-            title: 'AI 对话助手',
-            subtitle: '"这个月外卖花多少？" 这种自然提问',
-            onTap: () async {
-              final lid = await AuthService.getCurrentLedgerId();
-              if (!mounted) return;
-              if (lid == null || lid.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请先选择账本')),
-                );
-                return;
-              }
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => ChatScreen(ledgerId: lid)),
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          _section('工具'),
-          _tile(
-            icon: '🧰',
-            title: '工具箱',
-            subtitle: '贷款 · 个税 · 复利定投 · 汇率换算',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ToolsScreen()),
-            ),
-          ),
+          _section('功能'),
+          _funcGrid(),
           const SizedBox(height: 20),
           _section('设置'),
           _tile(
@@ -477,6 +384,80 @@ class _ProfileScreenState extends State<ProfileScreen>
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.text2)),
+      );
+
+  void _push(Widget page) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+  Future<void> _openChat() async {
+    final lid = await AuthService.getCurrentLedgerId();
+    if (!mounted) return;
+    if (lid == null || lid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择账本')),
+      );
+      return;
+    }
+    _push(ChatScreen(ledgerId: lid));
+  }
+
+  /// 财务功能宫格（4 列）：比一长条列表更好扫读、更省屏
+  Widget _funcGrid() {
+    final items = <(String, String, VoidCallback)>[
+      ('💳', '账户', () => _push(const AccountsScreen())),
+      ('🤝', '借贷', () => _push(const LoansScreen())),
+      ('🤖', 'AI 导入', () => _push(const AiImportsScreen())),
+      ('📋', '订阅', () => _push(const RecurringScreen())),
+      ('🎯', '目标', () => _push(const GoalsScreen())),
+      ('📊', '月报', () => _push(const MonthlyReportScreen())),
+      ('💬', 'AI 助手', _openChat),
+      ('🧰', '工具箱', () => _push(const ToolsScreen())),
+    ];
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+      child: LayoutBuilder(
+        builder: (ctx, c) {
+          const cols = 4;
+          const gap = 4.0;
+          final w = (c.maxWidth - gap * (cols - 1)) / cols;
+          return Wrap(
+            spacing: gap,
+            runSpacing: 18,
+            children: items
+                .map((e) =>
+                    SizedBox(width: w, child: _gridItem(e.$1, e.$2, e.$3)))
+                .toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _gridItem(String icon, String label, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                  child: Text(icon, style: const TextStyle(fontSize: 22))),
+            ),
+            const SizedBox(height: 7),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: AppColors.text1)),
+          ],
+        ),
       );
 
   Widget _tile({

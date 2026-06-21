@@ -6,7 +6,7 @@ import '../widgets/glass.dart';
 import 'home_screen.dart';
 import 'stats_screen.dart';
 import 'budgets_screen.dart';
-import 'goals_screen.dart';
+import 'bills_screen.dart';
 import 'news_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -27,21 +27,21 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  // tab 顺序：0=主页 1=统计 2=资讯 3=预算 4=目标
-  static const _labels      = ['主页', '统计', '资讯', '预算', '目标'];
+  // tab 顺序：0=主页 1=账单 2=资讯 3=预算 4=统计
+  static const _labels      = ['主页', '账单', '资讯', '预算', '统计'];
   static const _icons       = [
     Icons.home_outlined,
-    Icons.bar_chart_outlined,
+    Icons.receipt_long_outlined,
     Icons.newspaper_outlined,
     Icons.account_balance_wallet_outlined,
-    Icons.savings_outlined,
+    Icons.bar_chart_outlined,
   ];
   static const _activeIcons = [
     Icons.home_rounded,
-    Icons.bar_chart_rounded,
+    Icons.receipt_long_rounded,
     Icons.newspaper_rounded,
     Icons.account_balance_wallet_rounded,
-    Icons.savings_rounded,
+    Icons.bar_chart_rounded,
   ];
 
   @override
@@ -55,10 +55,10 @@ class _MainScreenState extends State<MainScreen> {
         // 让 Flutter 重新走 build() 路径（State 由 AutomaticKeepAliveClientMixin 保活）
         final pages = <Widget>[
           HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
-          StatsScreen(),
+          const BillsScreen(isTab: true),
           const NewsScreen(),
           BudgetsScreen(),
-          GoalsScreen(),
+          StatsScreen(),
         ];
         return Scaffold(
           backgroundColor: Colors.transparent,

@@ -458,9 +458,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           slivers: [
             SliverToBoxAdapter(child: _heroHeader(a)),
             SliverToBoxAdapter(child: _typeSpecificCard(a)),
-            // 资产变动走势：除信用卡外的账户都展示（按当前筛选区间的账单重建余额曲线）
-            if (a.type != 'CREDIT' && a.balanceVisible)
-              SliverToBoxAdapter(child: _trendCard(a)),
             if (a.balanceVisible) SliverToBoxAdapter(child: _summary()),
             SliverToBoxAdapter(
               child: Padding(
@@ -595,15 +592,23 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 style:
                     TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
             const SizedBox(height: 4),
-            Text(
-              a.balanceVisible
-                  ? '¥${_moneyFmt.format(value)}'
-                  : '****',
-              style: TextStyle(
-                  color: valueColor,
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -1),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    a.balanceVisible
+                        ? '¥${_moneyFmt.format(value)}'
+                        : '****',
+                    style: TextStyle(
+                        color: valueColor,
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -1),
+                  ),
+                ),
+                _miniSpark(a),
+              ],
             ),
             if (a.isCredit && (a.creditLimit ?? 0) > 0) ...[
               const SizedBox(height: 12),
@@ -928,9 +933,12 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     return [for (final k in order) _TrendPoint(DateTime.parse(k), map[k]!)];
   }
 
-  Widget _trendCard(Account a) {
+  /// 余额右侧的迷你走势 sparkline（信用卡 / 隐藏余额不显示）。
+  Widget _miniSpark(Account a) {
+    if (a.type == 'CREDIT' || !a.balanceVisible) return const SizedBox.shrink();
     final pts = _trendPoints();
     if (pts.length < 2) return const SizedBox.shrink();
+    final fg = AppColors.onPrimaryGradient;
     final spots = [
       for (int i = 0; i < pts.length; i++)
         FlSpot(i.toDouble(), pts[i].balance),
@@ -944,84 +952,63 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     maxY += pad;
     final delta = pts.last.balance - pts.first.balance;
     final up = delta >= 0;
-    final lineColor = up ? AppColors.income : AppColors.expense;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              const Text('📈', style: TextStyle(fontSize: 15)),
-              const SizedBox(width: 6),
-              Text('资产变动',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.text1)),
-              const Spacer(),
-              Text(
-                  '${up ? '+' : '-'}¥${_moneyFmt.format(delta.abs())}',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: lineColor)),
-            ]),
-            const SizedBox(height: 14),
-            SizedBox(
-              height: 130,
-              child: LineChart(
-                LineChartData(
-                  minX: 0,
-                  maxX: (pts.length - 1).toDouble(),
-                  minY: minY,
-                  maxY: maxY,
-                  gridData: FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(show: false),
-                  lineTouchData: LineTouchData(enabled: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      curveSmoothness: 0.25,
-                      color: lineColor,
-                      barWidth: 2.5,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(show: false),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            lineColor.withOpacity(0.22),
-                            lineColor.withOpacity(0.0),
-                          ],
-                        ),
+      padding: const EdgeInsets.only(left: 12, bottom: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(up ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                size: 13, color: fg.withOpacity(0.85)),
+            const SizedBox(width: 3),
+            Text('${up ? '+' : '-'}¥${_moneyFmt.format(delta.abs())}',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: fg.withOpacity(0.85))),
+          ]),
+          const SizedBox(height: 3),
+          SizedBox(
+            width: 84,
+            height: 28,
+            child: LineChart(
+              LineChartData(
+                minX: 0,
+                maxX: (pts.length - 1).toDouble(),
+                minY: minY,
+                maxY: maxY,
+                gridData: FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(show: false),
+                lineTouchData: LineTouchData(enabled: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    curveSmoothness: 0.25,
+                    color: fg,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          fg.withOpacity(0.25),
+                          fg.withOpacity(0.0),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            Row(children: [
-              Text(DateFormat('yyyy/M/d').format(pts.first.date),
-                  style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
-              const Spacer(),
-              Text('当前 ¥${_moneyFmt.format(pts.last.balance)}',
-                  style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
-            ]),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

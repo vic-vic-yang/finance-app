@@ -7,7 +7,6 @@ import '../models/savings_goal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/glass.dart';
-import 'profile_screen.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -107,13 +106,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '储蓄目标',
-        avatarTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -127,12 +122,13 @@ class _GoalsScreenState extends State<GoalsScreen> {
           ),
         ],
       ),
-      body: _loading
+      body: AuraBackground(
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
                 children: [
                   _header(),
                   const SizedBox(height: 24),
@@ -149,6 +145,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 

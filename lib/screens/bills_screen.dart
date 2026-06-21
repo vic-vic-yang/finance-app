@@ -5,13 +5,17 @@ import '../core/theme.dart';
 import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
+import '../models/account.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import 'add_bill_screen.dart';
+import 'profile_screen.dart';
 
 class BillsScreen extends StatefulWidget {
-  const BillsScreen({super.key});
+  /// true=作为底部 tab（左上头像、透明底）；false=二级页（返回箭头、bg 底）
+  const BillsScreen({super.key, this.isTab = false});
+  final bool isTab;
   @override
   State<BillsScreen> createState() => _BillsScreenState();
 }
@@ -30,6 +34,7 @@ class _BillsScreenState extends State<BillsScreen>
   bool   _hasMore = true;
   String? _filterType;
   String? _filterUserId;
+  String? _filterAccountId;
   _DateMode _dateMode = _DateMode.all;
   DateTime _dateAnchor = DateTime.now();
   DateTime? _rangeStart;
@@ -79,6 +84,7 @@ class _BillsScreenState extends State<BillsScreen>
   }
 
   List<({String id, String name})> _members = [];
+  List<Account> _accounts = [];
   bool _isSharedLedger = false;
 
   @override
@@ -86,6 +92,7 @@ class _BillsScreenState extends State<BillsScreen>
     super.initState();
     refreshBus.addListener(_onBump);
     _loadMembers();
+    _loadAccounts();
     _load(refresh: true);
     _scroll.addListener(() {
       if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 200 &&
@@ -130,6 +137,17 @@ class _BillsScreenState extends State<BillsScreen>
     } catch (_) {}
   }
 
+  Future<void> _loadAccounts() async {
+    try {
+      // scope:'all' = 账本下全部账户（含其他成员私人账户，按人分组展示）
+      final res = await ApiService.getAccounts(scope: 'all');
+      final list = (res['accounts'] as List? ?? [])
+          .map((a) => Account.fromJson(a as Map<String, dynamic>))
+          .toList();
+      if (mounted) setState(() => _accounts = list);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     refreshBus.removeListener(_onBump);
@@ -155,6 +173,7 @@ class _BillsScreenState extends State<BillsScreen>
         limit: 20,
         type: _filterType,
         userId: _filterUserId,
+        accountId: _filterAccountId,
         startDate: _startDate,
         endDate: _endDate,
       );
@@ -180,6 +199,7 @@ class _BillsScreenState extends State<BillsScreen>
         limit: 20,
         type: _filterType,
         userId: _filterUserId,
+        accountId: _filterAccountId,
         startDate: _startDate,
         endDate: _endDate,
       );
@@ -221,11 +241,17 @@ class _BillsScreenState extends State<BillsScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: widget.isTab ? Colors.transparent : AppColors.bg,
       appBar: AuraAppBar(
         title: '账单',
+        avatarTap: widget.isTab
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                )
+            : null,
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_isSharedLedger ? 92 : 92),
+          preferredSize: const Size.fromHeight(100),
           child: _filterBar(),
         ),
       ),
@@ -248,44 +274,49 @@ class _BillsScreenState extends State<BillsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: 38,
+            height: 40,
             child: Row(children: [
+              if (_isSharedLedger) ...[
+                _userFilterButton(),
+                const SizedBox(width: 8),
+              ],
+              if (_accounts.isNotEmpty) ...[
+                _accountFilterButton(),
+                const SizedBox(width: 8),
+              ],
               _dateFilterButton(),
               const Spacer(),
-              RichText(
-                text: TextSpan(
-                  style: const TextStyle(fontSize: 12),
-                  children: [
-                    if (_totalIncome > 0)
-                      TextSpan(
-                          text: '+¥${_moneyFmtInt.format(_totalIncome)}  ',
-                          style: const TextStyle(
-                              color: AppColors.income,
-                              fontWeight: FontWeight.w600)),
-                    if (_totalExpense > 0)
-                      TextSpan(
-                          text: '-¥${_moneyFmtInt.format(_totalExpense)}',
-                          style: const TextStyle(
-                              color: AppColors.expense,
-                              fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
             ]),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           SizedBox(
-            height: 38,
+            height: 40,
             child: Row(children: [
-              _chip('全部', null),
-              const SizedBox(width: 8),
-              _chip('收入', 'income'),
-              const SizedBox(width: 8),
-              _chip('支出', 'expense'),
-              if (_isSharedLedger) ...[
-                const Spacer(),
-                _userFilterButton(),
-              ],
+              _typeFilterButton(),
+              const Spacer(),
+              Flexible(
+                child: RichText(
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 12),
+                    children: [
+                      if (_totalIncome > 0)
+                        TextSpan(
+                            text: '+¥${_moneyFmtInt.format(_totalIncome)}  ',
+                            style: const TextStyle(
+                                color: AppColors.income,
+                                fontWeight: FontWeight.w600)),
+                      if (_totalExpense > 0)
+                        TextSpan(
+                            text: '-¥${_moneyFmtInt.format(_totalExpense)}',
+                            style: const TextStyle(
+                                color: AppColors.expense,
+                                fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
             ]),
           ),
         ],
@@ -541,7 +572,10 @@ class _BillsScreenState extends State<BillsScreen>
       onSelected: (v) {
         final next = v == allSentinel ? null : v;
         if (_filterUserId == next) return;
-        setState(() => _filterUserId = next);
+        setState(() {
+          _filterUserId = next;
+          _filterAccountId = null; // 切成员时重置账户（账户跟着成员变）
+        });
         _load(refresh: true);
       },
       shape: RoundedRectangleBorder(
@@ -626,21 +660,239 @@ class _BillsScreenState extends State<BillsScreen>
     );
   }
 
-  Widget _chip(String label, String? type) {
-    final selected = _filterType == type;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) {
-        if (_filterType == type) return;
-        setState(() => _filterType = type);
+  Widget _accountFilterButton() {
+    final selected = _filterAccountId != null;
+    final cur = selected
+        ? _accounts.firstWhere(
+            (a) => a.id == _filterAccountId,
+            orElse: () => _accounts.first,
+          )
+        : null;
+    final label = cur?.name ?? '全部账户';
+    return InkWell(
+      onTap: _showAccountFilterSheet,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 130),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryLight : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              size: 14,
+              color: selected ? AppColors.primary : AppColors.text2),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: selected ? AppColors.primary : AppColors.text2,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                )),
+          ),
+          const SizedBox(width: 2),
+          Icon(Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: selected ? AppColors.primary : AppColors.text2),
+        ]),
+      ),
+    );
+  }
+
+  /// 账户筛选弹窗：账本下全部账户，按 共享 / 各成员 分组
+  Future<void> _showAccountFilterSheet() async {
+    // 账户跟着「记账人」筛选走：选了某成员就只列 ta 的账户 + 共享账户
+    final scoped = _filterUserId == null
+        ? _accounts
+        : _accounts
+            .where((a) => a.isShared || a.ownerId == _filterUserId)
+            .toList();
+    final shared = scoped.where((a) => a.isShared).toList();
+    final byOwner = <String, List<Account>>{};
+    final ownerName = <String, String>{};
+    for (final a in scoped) {
+      if (a.isShared) continue;
+      final oid = a.ownerId ?? '';
+      byOwner.putIfAbsent(oid, () => []).add(a);
+      final dn = (a.ownerDisplayName ?? '').trim();
+      ownerName[oid] = dn.isEmpty ? '其他成员' : dn;
+    }
+    // "我的"（balanceVisible）排最前，其余按名字
+    final ownerIds = byOwner.keys.toList()
+      ..sort((x, y) {
+        final mx = byOwner[x]!.first.balanceVisible;
+        final my = byOwner[y]!.first.balanceVisible;
+        if (mx != my) return mx ? -1 : 1;
+        return ownerName[x]!.compareTo(ownerName[y]!);
+      });
+
+    Widget head(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Text(t,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text2)),
+        );
+    Widget item(BuildContext ctx,
+        {required bool sel,
+        required String emoji,
+        required String name,
+        required VoidCallback onTap}) {
+      return ListTile(
+        dense: true,
+        onTap: onTap,
+        leading: Text(emoji, style: const TextStyle(fontSize: 20)),
+        title: Text(name,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 14,
+                color: sel ? AppColors.primary : AppColors.text1,
+                fontWeight: sel ? FontWeight.w600 : FontWeight.normal)),
+        trailing: sel
+            ? Icon(Icons.check_circle_rounded,
+                size: 18, color: AppColors.primary)
+            : null,
+      );
+    }
+
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+                child: Row(children: [
+                  Text('按账户筛选',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text1)),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: Icon(Icons.close_rounded, color: AppColors.text2),
+                  ),
+                ]),
+              ),
+              Divider(height: 1, color: AppColors.border),
+              Flexible(
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  children: [
+                    item(ctx,
+                        sel: _filterAccountId == null,
+                        emoji: '📋',
+                        name: '全部账户',
+                        onTap: () => Navigator.pop(ctx, '__all__')),
+                    if (shared.isNotEmpty) head('共享账户'),
+                    ...shared.map((a) => item(ctx,
+                        sel: _filterAccountId == a.id,
+                        emoji: a.typeEmoji,
+                        name: a.name,
+                        onTap: () => Navigator.pop(ctx, a.id))),
+                    for (final oid in ownerIds) ...[
+                      head(byOwner[oid]!.first.balanceVisible
+                          ? '我的账户'
+                          : '${ownerName[oid]} 的账户'),
+                      ...byOwner[oid]!.map((a) => item(ctx,
+                          sel: _filterAccountId == a.id,
+                          emoji: a.typeEmoji,
+                          name: a.name,
+                          onTap: () => Navigator.pop(ctx, a.id))),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    final next = picked == '__all__' ? null : picked;
+    if (_filterAccountId == next) return;
+    setState(() => _filterAccountId = next);
+    _load(refresh: true);
+  }
+
+  Widget _typeFilterButton() {
+    final selected = _filterType != null;
+    final label = _filterType == 'income'
+        ? '收入'
+        : _filterType == 'expense'
+            ? '支出'
+            : '全部类型';
+    return PopupMenuButton<String>(
+      tooltip: '按类型筛选',
+      onSelected: (v) {
+        final next = v == '__all__' ? null : v;
+        if (_filterType == next) return;
+        setState(() => _filterType = next);
         _load(refresh: true);
       },
-      selectedColor: AppColors.primaryLight,
-      labelStyle: TextStyle(
-        color: selected ? AppColors.primary : AppColors.text2,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-        fontSize: 13,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.border),
+      ),
+      itemBuilder: (_) => [
+        for (final e in const [
+          ('__all__', '全部类型', null),
+          ('income', '收入', 'income'),
+          ('expense', '支出', 'expense'),
+        ])
+          PopupMenuItem<String>(
+            value: e.$1,
+            child: Text(e.$2,
+                style: TextStyle(
+                    color: _filterType == e.$3
+                        ? AppColors.primary
+                        : AppColors.text1,
+                    fontWeight: _filterType == e.$3
+                        ? FontWeight.w600
+                        : FontWeight.normal)),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryLight : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.filter_list_rounded,
+              size: 14,
+              color: selected ? AppColors.primary : AppColors.text2),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: selected ? AppColors.primary : AppColors.text2,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.normal)),
+          const SizedBox(width: 2),
+          Icon(Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: selected ? AppColors.primary : AppColors.text2),
+        ]),
       ),
     );
   }

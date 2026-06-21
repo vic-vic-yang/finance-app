@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../models/bill.dart';
 import '../widgets/glass.dart';
 import 'profile_screen.dart';
+import 'add_bill_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -814,7 +815,9 @@ class _StatsScreenState extends State<StatsScreen>
           final isLast = i == stats.length - 1;
           return Column(
             children: [
-              Padding(
+              InkWell(
+                onTap: () => _showCategoryBills(s),
+                child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Column(
@@ -853,6 +856,9 @@ class _StatsScreenState extends State<StatsScreen>
                           ],
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 16, color: AppColors.text3),
                     ]),
                     const SizedBox(height: 8),
                     ClipRRect(
@@ -867,11 +873,36 @@ class _StatsScreenState extends State<StatsScreen>
                     ),
                   ],
                 ),
+                ),
               ),
               if (!isLast) const Divider(height: 1, indent: 16),
             ],
           );
         }).toList(),
+      ),
+    );
+  }
+
+  /// 点分类 → 弹出该分类在当前周期里的具体账单
+  void _showCategoryBills(_CatStat s) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _CategoryBillsSheet(
+        categoryId: s.id,
+        type: s.type,
+        name: s.name,
+        icon: s.icon ?? '📂',
+        total: s.total,
+        count: s.count,
+        periodLabel: _periodLabel,
+        startDate: _startDate,
+        endDate: _endDate,
+        color: _tab == 0 ? AppColors.expense : AppColors.income,
       ),
     );
   }
@@ -961,5 +992,208 @@ class _MemberStat {
     final n = (nickname ?? '').trim();
     if (n.isNotEmpty) return n;
     return username;
+  }
+}
+
+// ── 分类明细弹窗：某分类在当前周期里的具体账单 ────────────────
+class _CategoryBillsSheet extends StatefulWidget {
+  final String categoryId;
+  final String type;
+  final String name;
+  final String icon;
+  final double total;
+  final int count;
+  final String periodLabel;
+  final String startDate;
+  final String endDate;
+  final Color color;
+  const _CategoryBillsSheet({
+    required this.categoryId,
+    required this.type,
+    required this.name,
+    required this.icon,
+    required this.total,
+    required this.count,
+    required this.periodLabel,
+    required this.startDate,
+    required this.endDate,
+    required this.color,
+  });
+
+  @override
+  State<_CategoryBillsSheet> createState() => _CategoryBillsSheetState();
+}
+
+class _CategoryBillsSheetState extends State<_CategoryBillsSheet> {
+  bool _loading = true;
+  List<Bill> _bills = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ApiService.getBills(
+        categoryId: widget.categoryId,
+        type: widget.type,
+        startDate: widget.startDate,
+        endDate: widget.endDate,
+        limit: 200,
+      );
+      final list = (res['bills'] as List? ?? [])
+          .map((b) => Bill.fromJson(b as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _bills = list;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxH = MediaQuery.of(context).size.height * 0.7;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxH),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 头部
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+            child: Row(children: [
+              Text(widget.icon, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.name,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.text1)),
+                    const SizedBox(height: 2),
+                    Text('${widget.periodLabel} · ${widget.count}笔',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.text3)),
+                  ],
+                ),
+              ),
+              Text(fmtMoney(widget.total),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: widget.color)),
+            ]),
+          ),
+          Divider(height: 1, color: AppColors.border),
+          Flexible(
+            child: _loading
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : _bills.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: Center(
+                          child: Text('没有明细',
+                              style: TextStyle(color: AppColors.text2)),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
+                        itemCount: _bills.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: AppColors.border),
+                        itemBuilder: (_, i) => _billRow(_bills[i]),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editBill(Bill b) async {
+    final changed = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AddBillScreen(bill: b)),
+    );
+    if (changed == true) {
+      bumpRefresh(); // 让底层统计页一起刷新
+      if (mounted) _load(); // 重新拉本分类明细
+    }
+  }
+
+  /// 与账单页一致的记录样式：图标头像 + 备注/账户 + 金额/日期
+  Widget _billRow(Bill b) {
+    final note = b.note.trim();
+    final accName = b.account.nameOf(b.ledgerId);
+    return InkWell(
+      onTap: () => _editBill(b),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color:
+                  b.isIncome ? AppColors.incomeLight : AppColors.expenseLight,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Center(
+              child: Text(
+                b.category.icon ?? (b.isIncome ? '💰' : '💸'),
+                style: const TextStyle(fontSize: 19),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  note.isEmpty ? widget.name : note,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.text1),
+                ),
+                const SizedBox(height: 2),
+                Text(accName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: AppColors.text2)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(b.amountText,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: widget.color)),
+              const SizedBox(height: 2),
+              Text(DateFormat('M月d日 HH:mm').format(b.date),
+                  style: TextStyle(fontSize: 11, color: AppColors.text2)),
+            ],
+          ),
+        ]),
+      ),
+    );
   }
 }

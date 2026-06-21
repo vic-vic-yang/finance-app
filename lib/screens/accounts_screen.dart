@@ -150,8 +150,10 @@ class _AccountsScreenState extends State<AccountsScreen>
                             child: _assetBig('我的资产', _mineBalance,
                                 _mineAccounts.length, fg),
                           ),
+                          const SizedBox(width: 12),
                           Container(
                               width: 1, height: 52, color: fg.withOpacity(0.15)),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _assetBig('共享资产', _sharedBalance,
                                 _sharedAccounts.length, fg),

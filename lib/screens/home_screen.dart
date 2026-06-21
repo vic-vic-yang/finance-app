@@ -7,7 +7,6 @@ import '../core/theme.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
 import '../models/account.dart';
-import '../models/budget.dart';
 import '../models/ledger.dart';
 import '../models/insight.dart';
 import '../models/proposal.dart';
@@ -21,7 +20,6 @@ import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'bills_screen.dart';
-import 'budgets_screen.dart';
 import 'cfo_screen.dart';
 import 'ledgers_screen.dart';
 import 'profile_screen.dart';
@@ -51,7 +49,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   List<Account> _accounts    = [];
   List<Bill>    _recentBills  = [];
-  List<Budget>  _budgets      = [];
   List<Ledger>  _ledgers      = [];
   Ledger?       _currentLedger;
   double _income  = 0;
@@ -133,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen>
         ApiService.getAccounts(),
         ApiService.getBills(limit: 8),
         ApiService.getStats(startDate: start, endDate: end),
-        ApiService.getBudgets(),
         ApiService.getLedgers(),
         // AI 洞察：实时算，失败不应影响首页其他数据
         ApiService.aiInsights().catchError(
@@ -144,10 +140,10 @@ class _HomeScreenState extends State<HomeScreen>
       final cfoProps = await cfoFuture;
 
       if (!mounted) return;
-      final ledgers = (results[4]['ledgers'] as List? ?? [])
+      final ledgers = (results[3]['ledgers'] as List? ?? [])
           .map((l) => Ledger.fromJson(l as Map<String, dynamic>))
           .toList();
-      final currentId = results[4]['currentLedgerId'] as String?;
+      final currentId = results[3]['currentLedgerId'] as String?;
       setState(() {
         _accounts = (results[0]['accounts'] as List? ?? [])
             .map((a) => Account.fromJson(a as Map<String, dynamic>)).toList();
@@ -159,9 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
         final asset = (results[2]['assetSummary'] as Map?) ?? {};
         _familyTotal = (asset['total']  as num?)?.toDouble() ?? 0;
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
-        _budgets = (results[3]['budgets'] as List? ?? [])
-            .map((b) => Budget.fromJson(b as Map<String, dynamic>)).toList();
-        _insights = (results[5]['insights'] as List? ?? [])
+        _insights = (results[4]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _cfoCount = cfoProps.length;
         _cfoHasCritical = cfoProps.any((p) => p.severity == 'critical');
@@ -202,7 +196,9 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
-              SliverToBoxAdapter(child: _cfoEntryCard()),
+              // 没有待处理建议时不显示 CFO 复盘卡（避免空状态占位）
+              if (_cfoCount > 0)
+                SliverToBoxAdapter(child: _cfoEntryCard()),
               SliverToBoxAdapter(child: _quickToolsRow()),
               if (_insights.isNotEmpty) ...[
                 _sectionTitleWithAction(
@@ -231,14 +227,6 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(child: _accountsList()),
               ] else
                 SliverToBoxAdapter(child: _noAccount()),
-              if (_hasAnyBudget) ...[
-                _sectionTitleWithAction(
-                  _shownBudgetPeriod == 'YEARLY' ? '本年预算' : '本月预算',
-                  '管理',
-                  _goBudgets,
-                ),
-                SliverToBoxAdapter(child: _budgetTotalCard()),
-              ],
               if (_recentBills.isEmpty)
                 ...[
                   _sectionTitle('最近账单'),
@@ -929,157 +917,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-  // ── 预算汇总（点进 BudgetsScreen）──
-  // 优先显示月度；若月度完全为空但年度有，回退到年度
-
-  List<Budget> _categoryBudgetsOf(String period) => _budgets
-      .where((b) => b.period == period && b.categoryId != null)
-      .toList();
-
-  Budget? _manualTotalOf(String period) {
-    for (final b in _budgets) {
-      if (b.period == period && b.categoryId == null) return b;
-    }
-    return null;
-  }
-
-  bool _hasBudgetOf(String period) =>
-      _manualTotalOf(period) != null ||
-      _categoryBudgetsOf(period).isNotEmpty;
-
-  /// 卡片实际显示的周期：有月度优先月度，否则年度，再否则 null
-  String? get _shownBudgetPeriod {
-    if (_hasBudgetOf('MONTHLY')) return 'MONTHLY';
-    if (_hasBudgetOf('YEARLY')) return 'YEARLY';
-    return null;
-  }
-
-  /// 是否有任何预算（手填总预算 或 分类预算）
-  bool get _hasAnyBudget => _shownBudgetPeriod != null;
-
-  /// 进预算:优先切到底部「预算」tab(不开新页面),没有注入回调才 push。
-  void _goBudgets() {
-    if (widget.onSwitchTab != null) {
-      widget.onSwitchTab!(3); // 3 = 预算 tab
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const BudgetsScreen()),
-      );
-    }
-  }
-
-  /// 首页只显示这一个卡片，点击切到预算 tab
-  Widget _budgetTotalCard() {
-    final period = _shownBudgetPeriod ?? 'MONTHLY';
-    final isYearly = period == 'YEARLY';
-    final cats = _categoryBudgetsOf(period);
-    final manualTarget = _manualTotalOf(period)?.amount ?? 0.0;
-    final sumCats = cats.fold<double>(0.0, (s, b) => s + b.amount);
-    final total = sumCats > manualTarget ? sumCats : manualTarget;
-    final spent = cats.fold<double>(0.0, (s, b) => s + b.spent);
-    final remaining = total - spent;
-    final progress = total > 0 ? spent / total : 0.0;
-    final over = spent > total && total > 0;
-    final color = over
-        ? AppColors.expense
-        : (progress > 0.8 ? AppColors.warning : AppColors.primary);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GlassCard(
-        radius: 16,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        onTap: _goBudgets,
-        child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text('💼',
-                          style: const TextStyle(fontSize: 17)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(isYearly ? '年度预算' : '月度预算',
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.text1)),
-                        const SizedBox(height: 1),
-                        Text(
-                          cats.isEmpty
-                              ? '只设了总预算上限'
-                              : '${cats.length} 个分类预算',
-                          style: TextStyle(
-                              fontSize: 11, color: AppColors.text3),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    '${(progress * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: color,
-                        fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(Icons.chevron_right_rounded,
-                      color: AppColors.text3, size: 18),
-                ]),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: progress.clamp(0.0, 1.0),
-                    minHeight: 6,
-                    backgroundColor: color.withOpacity(0.10),
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Text(
-                    '已用 ${fmtMoneyInt(spent)}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                        fontWeight: FontWeight.w600),
-                  ),
-                  Text(' / ${fmtMoneyInt(total)}',
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.text3)),
-                  const Spacer(),
-                  Text(
-                    over
-                        ? '超支 ${fmtMoneyInt(-remaining)}'
-                        : '剩 ${fmtMoneyInt(remaining)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: over
-                          ? AppColors.expense
-                          : AppColors.text2,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ]),
-              ],
-            ),
-      ),
-    );
-  }
 }
 
 /// 首页快捷工具项
