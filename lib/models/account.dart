@@ -9,6 +9,7 @@ class Account {
   final String ledgerId;
   final String type;
   final double balance;
+  final double initialBalance;
   final String? icon;
   final String? color;
 
@@ -57,6 +58,7 @@ class Account {
     this.nameDekVer = 1,
     required this.type,
     required this.balance,
+    this.initialBalance = 0,
     this.icon,
     this.color,
     this.ownerId,
@@ -96,6 +98,7 @@ class Account {
         nameDekVer: (json['nameDekVer'] as num?)?.toInt() ?? 1,
         type: json['type'] as String,
         balance: (json['balance'] as num?)?.toDouble() ?? 0,
+        initialBalance: (json['initialBalance'] as num?)?.toDouble() ?? 0,
         icon: json['icon'] as String?,
         color: json['color'] as String?,
         ownerId: json['ownerId'] as String?,

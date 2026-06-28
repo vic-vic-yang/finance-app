@@ -238,7 +238,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   }
 
   void _openReconcileSheet(Account a) {
-    final ctrl = TextEditingController(text: a.balance.toStringAsFixed(2));
+    final isCredit = a.isCredit;
+    final owed = a.balance < 0 ? -a.balance : 0.0;
+    final ctrl = TextEditingController(
+        text: (isCredit ? owed : a.balance).toStringAsFixed(2));
     bool submitting = false;
     showModalBottomSheet(
       context: context,
@@ -269,7 +272,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 );
                 await ApiService.reconcileAccount(
                   id: a.id,
-                  actualBalance: v,
+                  actualBalance: isCredit ? -v.abs() : v,
                   noteCipher: cipher,
                   noteDekVer: dekVer,
                 );
@@ -310,7 +313,9 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                       ]),
                       const SizedBox(height: 4),
                       Text(
-                        '当前余额  ¥${a.balance.toStringAsFixed(2)}',
+                        isCredit
+                            ? '当前欠款  ¥${owed.toStringAsFixed(2)}'
+                            : '当前余额  ¥${a.balance.toStringAsFixed(2)}',
                         style:
                             TextStyle(fontSize: 13, color: AppColors.text2),
                       ),
@@ -325,7 +330,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                             fontWeight: FontWeight.w600,
                             color: AppColors.text1),
                         decoration: InputDecoration(
-                          labelText: '实际余额',
+                          labelText: isCredit ? '实际欠款' : '实际余额',
                           prefixText: '¥ ',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -435,8 +440,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             ),
           ],
         ),
-        // 校准余额：仅普通账户（信用卡/负债余额由欠款/贷款逻辑推导，不适用）
-        actions: (a.type != 'CREDIT' && a.type != 'DEBT')
+        // 校准余额：普通账户 + 信用卡（信用卡按欠款校准）；负债余额由还款计划推导，不适用
+        actions: (a.type != 'DEBT')
             ? [
                 IconButton(
                   tooltip: '校准余额',
@@ -500,6 +505,16 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 
+  /// 顶部卡的「初始余额」文案（信用卡/负债显示初始欠款）
+  String _heroInitialText(Account a) {
+    if (a.isCredit || a.isDebt) {
+      final v =
+          a.initialBalance < 0 ? -a.initialBalance : a.initialBalance.abs();
+      return '初始欠款  ¥${v.toStringAsFixed(2)}';
+    }
+    return '初始余额  ¥${a.initialBalance.toStringAsFixed(2)}';
+  }
+
   Widget _heroHeader(Account a) {
     String label;
     double value;
@@ -526,7 +541,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: AppColors.primaryGradient,
@@ -540,15 +555,15 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           children: [
             Row(children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: fg.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(11),
                 ),
                 child: Center(
                   child:
-                      Text(a.typeEmoji, style: const TextStyle(fontSize: 22)),
+                      Text(a.typeEmoji, style: const TextStyle(fontSize: 20)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -587,11 +602,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 ),
               ),
             ]),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Text(label,
                 style:
                     TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -602,7 +617,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                         : '****',
                     style: TextStyle(
                         color: valueColor,
-                        fontSize: 34,
+                        fontSize: 30,
                         fontWeight: FontWeight.bold,
                         letterSpacing: -1),
                   ),
@@ -610,12 +625,17 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 _miniSpark(a),
               ],
             ),
+            if (a.balanceVisible && a.initialBalance != 0) ...[
+              const SizedBox(height: 4),
+              Text(_heroInitialText(a),
+                  style: TextStyle(color: fg.withOpacity(0.55), fontSize: 11)),
+            ],
             if (a.isCredit && (a.creditLimit ?? 0) > 0) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _creditUsageBar(a),
             ],
             if (a.isDebt && (a.info?.totalPeriods ?? 0) > 0) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _debtProgressBar(a),
             ],
           ],
@@ -782,48 +802,103 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   Widget _creditDetailCard(Account a) {
     final i = a.info;
     final fmt = DateFormat('M月d日');
+    final fmtShort = DateFormat('M/d');
+
+    final urgent =
+        (i?.isOverdue ?? false) || (i?.isDueToday ?? false) || (i?.isDueTomorrow ?? false);
+    final nextDue = i?.dueDate == null
+        ? '—'
+        : i!.isOverdue
+            ? '逾期${-(i.daysToDue ?? 0)}天'
+            : i.isDueToday
+                ? '今天'
+                : i.isDueTomorrow
+                    ? '明天'
+                    : '${fmtShort.format(i.dueDate!)} 剩${i.daysToDue ?? 0}天';
+
+    // 账期 / 下期未出账 / 已还 合成一行 meta
+    final meta = <String>[
+      if (i?.periodStart != null && i?.periodEnd != null)
+        '账期 ${fmt.format(i!.periodStart!)}–${fmt.format(i.periodEnd!)}',
+      if ((i?.ongoingSpent ?? 0) > 0)
+        '下期未出账 ¥${_moneyFmt.format(i!.ongoingSpent!)}',
+      if ((i?.paid ?? 0) > 0) '已还 ¥${_moneyFmt.format(i!.paid!)}',
+    ].join('   ·   ');
+
     return _sectionCard(
       title: '本期账单',
       emoji: '💳',
       children: [
-        if (i?.periodStart != null && i?.periodEnd != null)
-          _kvRow('账期',
-              '${fmt.format(i!.periodStart!)} ~ ${fmt.format(i.periodEnd!)}'),
-        if (i?.periodBill != null)
-          _kvRow('本期账单', '¥${_moneyFmt.format(i!.periodBill!)}', bold: true),
-        if ((i?.paid ?? 0) > 0)
-          _kvRow('已还', '¥${_moneyFmt.format(i!.paid!)}',
-              valueColor: AppColors.income),
-        if ((i?.unpaid ?? 0) > 0)
-          _kvRow('未还', '¥${_moneyFmt.format(i!.unpaid!)}',
-              valueColor: AppColors.expense, bold: true),
-        if ((i?.ongoingSpent ?? 0) > 0)
-          _kvRow('下期未出账', '¥${_moneyFmt.format(i!.ongoingSpent!)}',
-              valueColor: AppColors.text2),
-        const Divider(height: 18),
-        if (a.statementDay != null)
-          _kvRow('账单日', '每月 ${a.statementDay} 号'),
-        if (a.dueDay != null) _kvRow('还款日', '每月 ${a.dueDay} 号'),
-        if (i?.dueDate != null)
-          _kvRow(
-            '下次还款',
-            i!.isOverdue
-                ? '已逾期 ${-(i.daysToDue ?? 0)} 天'
-                : i.isDueToday
-                    ? '今天'
-                    : i.isDueTomorrow
-                        ? '明天'
-                        : '${fmt.format(i.dueDate!)} (剩 ${i.daysToDue ?? 0} 天)',
-            valueColor: i.isOverdue || i.isDueToday || i.isDueTomorrow
-                ? AppColors.expense
-                : null,
-            bold: i.isOverdue || i.isDueToday,
+        // 两个核心数：本期账单 / 未还
+        Row(children: [
+          Expanded(
+            child: _bigStat(
+                '本期账单',
+                i?.periodBill != null
+                    ? '¥${_moneyFmt.format(i!.periodBill!)}'
+                    : '¥0',
+                AppColors.text1),
           ),
-        if (a.creditLimit != null)
-          _kvRow('信用额度', '¥${_moneyFmtInt.format(a.creditLimit!)}'),
+          Expanded(
+            child: _bigStat(
+                '未还',
+                (i?.unpaid ?? 0) > 0
+                    ? '¥${_moneyFmt.format(i!.unpaid!)}'
+                    : '¥0',
+                (i?.unpaid ?? 0) > 0 ? AppColors.expense : AppColors.text1),
+          ),
+        ]),
+        if (meta.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(meta,
+              style: TextStyle(fontSize: 12, color: AppColors.text2)),
+        ],
+        const Divider(height: 18),
+        // 还款计划：三列紧凑
+        Row(children: [
+          Expanded(
+              child: _compactKv('账单日',
+                  a.statementDay != null ? '${a.statementDay}号' : '—')),
+          Expanded(
+              child: _compactKv(
+                  '还款日', a.dueDay != null ? '${a.dueDay}号' : '—')),
+          Expanded(
+              child: _compactKv('下次还款', nextDue,
+                  color: urgent ? AppColors.expense : null)),
+        ]),
       ],
     );
   }
+
+  Widget _bigStat(String label, String value, Color color) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 12, color: AppColors.text2)),
+          const SizedBox(height: 3),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 19, fontWeight: FontWeight.w700, color: color)),
+        ],
+      );
+
+  Widget _compactKv(String label, String value, {Color? color}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 11, color: AppColors.text3)),
+          const SizedBox(height: 2),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: color ?? AppColors.text1)),
+        ],
+      );
 
   Widget _debtDetailCard(Account a) {
     final i = a.info;

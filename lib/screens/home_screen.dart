@@ -437,8 +437,8 @@ class _HomeScreenState extends State<HomeScreen>
         bgColor = Colors.blue.shade50;
     }
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
@@ -454,19 +454,20 @@ class _HomeScreenState extends State<HomeScreen>
                 Text(
                   ins.title,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (ins.body.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     ins.body,
-                    style: TextStyle(fontSize: 12.5, color: AppColors.text2),
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.text2, height: 1.3),
                   ),
                 ],
                 if (ins.actions.isNotEmpty) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Wrap(
                     spacing: 6,
                     children: [
@@ -489,10 +490,14 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
           ),
-          IconButton(
-            tooltip: '忽略',
-            icon: Icon(Icons.close, size: 18, color: AppColors.text2),
-            onPressed: () => _dismissInsight(ins),
+          GestureDetector(
+            onTap: () => _dismissInsight(ins),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, top: 1, bottom: 1),
+              child: Icon(Icons.close_rounded,
+                  size: 16, color: AppColors.text3),
+            ),
           ),
         ],
       ),
