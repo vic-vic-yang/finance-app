@@ -328,9 +328,9 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Expanded(child: _bigNum('收入', _income, Colors.green)),
+                      Expanded(child: _bigNum('收入', _income, AppColors.income)),
                       Container(width: 1, height: 36, color: Colors.grey.shade300),
-                      Expanded(child: _bigNum('支出', _expense, Colors.red)),
+                      Expanded(child: _bigNum('支出', _expense, AppColors.expense)),
                       Container(width: 1, height: 36, color: Colors.grey.shade300),
                       Expanded(
                         child: _bigNum(

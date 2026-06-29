@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../core/theme.dart';
 import '../models/bill.dart';
 
 class BillCard extends StatelessWidget {
@@ -17,7 +18,7 @@ class BillCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIncome = bill.isIncome;
-    final color = isIncome ? Colors.green : Colors.red;
+    final color = isIncome ? AppColors.income : AppColors.expense;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

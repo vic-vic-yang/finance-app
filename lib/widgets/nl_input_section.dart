@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/refresh_bus.dart';
+import '../core/theme.dart';
 import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../models/bill.dart';
@@ -452,7 +453,7 @@ class _NlInputSectionState extends State<NlInputSection> {
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
-                  color: d.isIncome ? Colors.green : Colors.red,
+                  color: d.isIncome ? AppColors.income : AppColors.expense,
                 ),
               ),
               Text(
@@ -460,7 +461,7 @@ class _NlInputSectionState extends State<NlInputSection> {
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
-                  color: d.isIncome ? Colors.green : Colors.red,
+                  color: d.isIncome ? AppColors.income : AppColors.expense,
                 ),
               ),
             ],

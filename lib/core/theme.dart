@@ -81,16 +81,18 @@ class AppColors {
   }
 
   // ── 语义色（Aura 风：低饱和、内敛）─────────────────────────
-  /// 收入 — Soft Sage（与 Aura 整体调性一致）
-  static const Color income       = Color(0xFF7CA188);
+  // 约定：收入 = 红、支出 = 绿（中国习惯：红涨/进、绿跌/出）。
+  // 全局金额颜色都引用 income/expense，改这里即全局生效。
+  /// 收入 — Muted Terracotta（红）
+  static const Color income       = Color(0xFFC68B77);
   static Color get incomeLight => _isDark
-      ? const Color(0xFF1F2C24)
-      : const Color(0xFFE9F0E8);
-  /// 支出 — Muted Terracotta（不再用刺眼的纯红）
-  static const Color expense      = Color(0xFFC68B77);
-  static Color get expenseLight => _isDark
       ? const Color(0xFF2E1C16)
       : const Color(0xFFF5E6E0);
+  /// 支出 — Soft Sage（绿）
+  static const Color expense      = Color(0xFF7CA188);
+  static Color get expenseLight => _isDark
+      ? const Color(0xFF1F2C24)
+      : const Color(0xFFE9F0E8);
   /// 提示 — 沙色
   static const Color warning      = Color(0xFFE0A86A);
   static Color get warningLight => _isDark
