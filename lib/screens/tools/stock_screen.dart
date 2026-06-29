@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../widgets/glass.dart';
@@ -16,6 +17,7 @@ class StockScreen extends StatefulWidget {
 class _StockScreenState extends State<StockScreen>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _list = [];
+  List<Map<String, dynamic>> _pnlDaily = [];
   bool _loading = true;
   late final TabController _tab;
 
@@ -46,6 +48,12 @@ class _StockScreenState extends State<StockScreen>
         _list = res.map((e) => (e as Map).cast<String, dynamic>()).toList();
         _loading = false;
       });
+      // 每日盈亏曲线（best-effort，不阻塞列表）
+      ApiService.getHoldingPnlDaily(days: 30).then((pnl) {
+        if (!mounted) return;
+        setState(() => _pnlDaily =
+            pnl.map((e) => (e as Map).cast<String, dynamic>()).toList());
+      }).catchError((_) {});
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -140,8 +148,12 @@ class _StockScreenState extends State<StockScreen>
           ? _empty(holding: holding)
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-              itemCount: list.length,
-              itemBuilder: (_, i) => _row(list[i], holding: holding),
+              itemCount: list.length + (holding ? 1 : 0),
+              itemBuilder: (_, i) {
+                if (holding && i == 0) return _portfolioSummary(list);
+                final idx = holding ? i - 1 : i;
+                return _row(list[idx], holding: holding);
+              },
             ),
     );
   }
@@ -250,6 +262,167 @@ class _StockScreenState extends State<StockScreen>
       ]),
     );
   }
+
+  /// 持仓总览：今日总盈亏 + 总市值/成本/总盈亏（客户端按实时价聚合所有持仓）
+  Widget _portfolioSummary(List<Map<String, dynamic>> holdings) {
+    double cost = 0, mv = 0, todayPnl = 0;
+    bool hasToday = false;
+    int counted = 0;
+    for (final s in holdings) {
+      final bp = (s['buyPrice'] is num) ? (s['buyPrice'] as num).toDouble() : null;
+      final sh = (s['shares'] is num) ? (s['shares'] as num).toDouble() : null;
+      final pr = (s['price'] is num) ? (s['price'] as num).toDouble() : null;
+      if (bp == null || sh == null || pr == null || bp <= 0 || sh <= 0) continue;
+      counted++;
+      cost += bp * sh;
+      mv += pr * sh;
+      final ch = (s['change'] is num) ? (s['change'] as num).toDouble() : null;
+      if (ch != null) {
+        todayPnl += ch * sh;
+        hasToday = true;
+      }
+    }
+    if (cost <= 0) return const SizedBox.shrink();
+    final pl = mv - cost;
+    final plPct = cost > 0 ? pl / cost * 100 : 0.0;
+    final todayColor = todayPnl >= 0 ? AppColors.income : AppColors.expense;
+    final plColor = pl >= 0 ? AppColors.income : AppColors.expense;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('今日盈亏',
+                style: TextStyle(fontSize: 12, color: AppColors.text2)),
+            const Spacer(),
+            Text('$counted 只持仓',
+                style: TextStyle(fontSize: 11, color: AppColors.text3)),
+          ]),
+          const SizedBox(height: 3),
+          Text(
+            hasToday
+                ? '${todayPnl >= 0 ? '+' : ''}¥${todayPnl.toStringAsFixed(2)}'
+                : '— 待更新',
+            style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+                color: hasToday ? todayColor : AppColors.text3),
+          ),
+          const Divider(height: 20),
+          Row(children: [
+            Expanded(child: _sumKv('总市值', '¥${_money0(mv)}')),
+            Expanded(child: _sumKv('持仓成本', '¥${_money0(cost)}')),
+            Expanded(
+              child: _sumKv(
+                '总盈亏',
+                '${pl >= 0 ? '+' : ''}¥${_money0(pl)}',
+                sub: '${pl >= 0 ? '+' : ''}${plPct.toStringAsFixed(1)}%',
+                color: plColor,
+              ),
+            ),
+          ]),
+          _pnlChart(),
+        ],
+      ),
+    );
+  }
+
+  /// 组合每日总盈亏曲线（柱状：盈=红，亏=绿，与全局金额配色一致）
+  Widget _pnlChart() {
+    final data = _pnlDaily
+        .where((e) => e['pnl'] is num)
+        .toList(); // [{date, pnl}]，按日升序
+    if (data.length < 2) return const SizedBox.shrink();
+    final vals = data.map((e) => (e['pnl'] as num).toDouble()).toList();
+    final maxV =
+        vals.map((v) => v.abs()).fold<double>(0, (a, b) => a > b ? a : b);
+    if (maxV <= 0) return const SizedBox.shrink();
+
+    final groups = <BarChartGroupData>[];
+    for (var i = 0; i < vals.length; i++) {
+      final v = vals[i];
+      groups.add(BarChartGroupData(x: i, barRods: [
+        BarChartRodData(
+          toY: v == 0 ? maxV * 0.005 : v,
+          width: vals.length > 22 ? 5 : 7,
+          borderRadius: BorderRadius.circular(2),
+          color: v >= 0 ? AppColors.income : AppColors.expense,
+        ),
+      ]));
+    }
+    final first = data.first['date']?.toString() ?? '';
+    final last = data.last['date']?.toString() ?? '';
+    String mmdd(String d) => d.length >= 10 ? d.substring(5) : d;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('每日盈亏',
+                style: TextStyle(fontSize: 11, color: AppColors.text3)),
+            const Spacer(),
+            Text('${mmdd(first)} ~ ${mmdd(last)}',
+                style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 78,
+            child: BarChart(BarChartData(
+              alignment: BarChartAlignment.spaceBetween,
+              maxY: maxV * 1.18,
+              minY: -maxV * 1.18,
+              barGroups: groups,
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              titlesData: const FlTitlesData(show: false),
+              barTouchData: BarTouchData(enabled: false),
+              extraLinesData: ExtraLinesData(horizontalLines: [
+                HorizontalLine(
+                  y: 0,
+                  color: AppColors.border,
+                  strokeWidth: 1,
+                ),
+              ]),
+            )),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _money0(double v) => v.abs() >= 10000
+      ? '${(v / 10000).toStringAsFixed(2)}万'
+      : v.toStringAsFixed(0);
+
+  Widget _sumKv(String label, String value, {String? sub, Color? color}) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: AppColors.text3)),
+          const SizedBox(height: 3),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: color ?? AppColors.text1)),
+          if (sub != null)
+            Text(sub,
+                style: TextStyle(fontSize: 10.5, color: color ?? AppColors.text3)),
+        ],
+      );
 
   /// 持仓行的盈亏摘要：成本 / 股数 / 总盈亏
   Widget _holdingLine(Map<String, dynamic> s, double? price) {

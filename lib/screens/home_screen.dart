@@ -203,14 +203,8 @@ class _HomeScreenState extends State<HomeScreen>
               if (_insights.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '🤖 AI 洞察',
-                  '订阅管家',
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RecurringScreen()),
-                    );
-                    if (mounted) _load();
-                  },
+                  '查看全部',
+                  _showAllInsightsSheet,
                 ),
                 SliverToBoxAdapter(child: _insightsList()),
               ],
@@ -408,11 +402,25 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           for (final ins in _insights.take(4)) _insightCard(ins),
           if (_insights.length > 4)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '还有 ${_insights.length - 4} 条…',
-                style: TextStyle(fontSize: 12, color: AppColors.text2),
+            GestureDetector(
+              onTap: _showAllInsightsSheet,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '查看其余 ${_insights.length - 4} 条',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 18, color: AppColors.primary),
+                  ],
+                ),
               ),
             ),
         ],
@@ -420,7 +428,68 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _insightCard(AiInsight ins) {
+  void _showAllInsightsSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          maxChildSize: 0.92,
+          minChildSize: 0.4,
+          builder: (_, controller) => Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                child: Row(
+                  children: [
+                    const Text('🤖 AI 洞察',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    Text('${_insights.length} 条',
+                        style:
+                            TextStyle(fontSize: 12, color: AppColors.text3)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _insights.isEmpty
+                    ? Center(
+                        child: Text('暂无洞察',
+                            style: TextStyle(color: AppColors.text3)))
+                    : ListView(
+                        controller: controller,
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        children: [
+                          for (final ins in _insights)
+                            _insightCard(ins,
+                                onChanged: () => setSheet(() {})),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _insightCard(AiInsight ins, {VoidCallback? onChanged}) {
     Color borderColor;
     Color bgColor;
     switch (ins.severity) {
@@ -491,7 +560,10 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           GestureDetector(
-            onTap: () => _dismissInsight(ins),
+            onTap: () {
+              _dismissInsight(ins);
+              onChanged?.call();
+            },
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.only(left: 4, top: 1, bottom: 1),

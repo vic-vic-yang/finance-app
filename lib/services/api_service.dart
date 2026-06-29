@@ -380,6 +380,11 @@ class ApiService {
   static Future<Map<String, dynamic>> deleteCategory(String id) =>
       _delete('/categories/$id');
 
+  /// 保存某同级分组的自定义排序（orderedIds 为按展示顺序排好的分类 id）
+  static Future<Map<String, dynamic>> reorderCategories(
+          List<String> orderedIds) =>
+      _patch('/categories/reorder', {'orderedIds': orderedIds});
+
   // ── Bills ─────────────────────────────────────────────────
   static Future<Map<String, dynamic>> getBills({
     int page = 1,
@@ -851,6 +856,12 @@ class ApiService {
   /// 某股票保存的完整分析 + 历史（含最新价与持仓）
   static Future<Map<String, dynamic>> getStockSaved(String symbol) =>
       _get('/tools/stocks/$symbol');
+
+  /// 组合每日总盈亏曲线：返回 [{date, pnl}]（pnl 正=盈，负=亏）
+  static Future<List<dynamic>> getHoldingPnlDaily({int days = 30}) async {
+    final res = await _getRaw('/tools/holdings/pnl-daily?days=$days');
+    return (res is List) ? res : <dynamic>[];
+  }
 
   /// 设置/更新某股票持仓（买入价、数量；≤0 清空）。返回 { holding }
   // ─── 每日机会股 ───────────────────────────────────────────

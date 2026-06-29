@@ -1390,16 +1390,21 @@ class _Term {
 /// - parentId 为 null：新建一级分类
 /// - parentId 非空：新建二级分类（type 必须与父一致，由 backend 校验）
 /// 成功返回创建好的 [Category]，否则返回 null（取消）。
-Future<Category?> _promptNewCategory({
+/// 创建 / 编辑分类的弹窗（复用同一套图标网格）。
+/// - [existing] 为空：新建（type/parentId 由参数给定）
+/// - [existing] 非空：编辑（仅改名称/图标；type、父子关系不可变）
+Future<Category?> promptCategoryEditor({
   required BuildContext context,
   required String title,
   required String hint,
   required String type,
   required String? parentId,
   required String? parentName,
+  Category? existing,
 }) async {
-  final nameCtrl = TextEditingController();
-  String? selectedIcon;
+  final isEdit = existing != null;
+  final nameCtrl = TextEditingController(text: existing?.name ?? '');
+  String? selectedIcon = existing?.icon;
   bool saving = false;
   String? errorMsg;
 
@@ -1567,17 +1572,23 @@ Future<Category?> _promptNewCategory({
                     }
                     setLocal(() => saving = true);
                     try {
-                      final res = await ApiService.createCategory(
-                        name: name,
-                        type: type,
-                        icon: selectedIcon,
-                        parentId: parentId,
-                      );
+                      final res = isEdit
+                          ? await ApiService.updateCategory(
+                              existing.id,
+                              name: name,
+                              icon: selectedIcon,
+                            )
+                          : await ApiService.createCategory(
+                              name: name,
+                              type: type,
+                              icon: selectedIcon,
+                              parentId: parentId,
+                            );
                       final raw = res['category'] as Map<String, dynamic>?;
                       if (raw == null) {
                         setLocal(() {
                           saving = false;
-                          errorMsg = '创建失败';
+                          errorMsg = isEdit ? '保存失败' : '创建失败';
                         });
                         return;
                       }
@@ -1587,7 +1598,7 @@ Future<Category?> _promptNewCategory({
                     } catch (e) {
                       setLocal(() {
                         saving = false;
-                        errorMsg = '创建失败，请重试';
+                        errorMsg = isEdit ? '保存失败，请重试' : '创建失败，请重试';
                       });
                     }
                   },
@@ -1597,7 +1608,7 @@ Future<Category?> _promptNewCategory({
                     height: 16,
                     child:
                         CircularProgressIndicator(strokeWidth: 2))
-                : const Text('创建'),
+                : Text(isEdit ? '保存' : '创建'),
           ),
         ],
       ); // AlertDialog + return
@@ -1710,7 +1721,7 @@ class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
 
   /// 新建一级分类
   Future<void> _createParent() async {
-    final created = await _promptNewCategory(
+    final created = await promptCategoryEditor(
       context: context,
       title: '新建一级分类',
       hint: '比如：装修、副业、宠物用品',
@@ -1729,7 +1740,7 @@ class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
 
   /// 新建二级分类（挂到 [parent] 下）
   Future<void> _createChild(Category parent) async {
-    final created = await _promptNewCategory(
+    final created = await promptCategoryEditor(
       context: context,
       title: '在「${parent.name}」下新建二级分类',
       hint: '比如：早茶、机油、保养',

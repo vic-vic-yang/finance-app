@@ -19,6 +19,7 @@ import 'monthly_report_screen.dart';
 import 'goals_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
+import 'category_manage_screen.dart';
 import 'tools/tools_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -405,6 +406,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _funcGrid() {
     final items = <(String, String, VoidCallback)>[
       ('💳', '账户', () => _push(const AccountsScreen())),
+      ('🏷️', '分类', () => _push(const CategoryManageScreen())),
       ('🤝', '借贷', () => _push(const LoansScreen())),
       ('🤖', 'AI 导入', () => _push(const AiImportsScreen())),
       ('📋', '订阅', () => _push(const RecurringScreen())),
