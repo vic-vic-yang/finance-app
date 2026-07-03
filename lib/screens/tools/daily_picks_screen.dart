@@ -6,7 +6,9 @@ import 'stock_detail_screen.dart';
 
 /// 每日机会股：板块轮动 → 主板选股 → AI 精析出的 Top10（每交易日 00:30 生成）。
 class DailyPicksScreen extends StatefulWidget {
-  const DailyPicksScreen({super.key});
+  /// embedded=true 时只返回内容（不含 Scaffold/AppBar），用于嵌到股票页的 tab 里
+  const DailyPicksScreen({super.key, this.embedded = false});
+  final bool embedded;
   @override
   State<DailyPicksScreen> createState() => _DailyPicksScreenState();
 }
@@ -71,33 +73,33 @@ class _DailyPicksScreenState extends State<DailyPicksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: _load,
+            child: _picks.isEmpty
+                ? _empty()
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                    children: [
+                      if (_running) _generatingBanner(),
+                      _headerCard(),
+                      _memoryCard(),
+                      const SizedBox(height: 14),
+                      for (int i = 0; i < _picks.length; i++)
+                        _pickCard((_picks[i] as Map).cast<String, dynamic>()),
+                      const SizedBox(height: 14),
+                      _disclaimer(),
+                    ],
+                  ),
+          );
+    // 嵌入模式：外层股票页已提供 Scaffold + AuraBackground，这里只给内容
+    if (widget.embedded) return body;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: const AuraAppBar(title: '每日机会股'),
-      body: AuraBackground(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                color: AppColors.primary,
-                onRefresh: _load,
-                child: _picks.isEmpty
-                    ? _empty()
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-                        children: [
-                          if (_running) _generatingBanner(),
-                          _headerCard(),
-                          _memoryCard(),
-                          const SizedBox(height: 14),
-                          for (int i = 0; i < _picks.length; i++)
-                            _pickCard(
-                                (_picks[i] as Map).cast<String, dynamic>()),
-                          const SizedBox(height: 14),
-                          _disclaimer(),
-                        ],
-                      ),
-              ),
-      ),
+      body: AuraBackground(child: body),
     );
   }
 

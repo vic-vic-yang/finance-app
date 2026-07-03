@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../widgets/glass.dart';
 import '../../services/api_service.dart';
 import 'stock_detail_screen.dart';
+import 'daily_picks_screen.dart';
 
 /// 股票分析：我查询过的股票列表（按股票分），可查询新股票、进入看分析并更新。
 class StockScreen extends StatefulWidget {
@@ -24,7 +25,7 @@ class _StockScreenState extends State<StockScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 3, vsync: this);
     _load();
   }
 
@@ -115,6 +116,7 @@ class _StockScreenState extends State<StockScreen>
           tabs: [
             Tab(text: '持仓 ${_holdings.length}'),
             Tab(text: '关注 ${_watch.length}'),
+            const Tab(text: '机会股'),
           ],
         ),
       ),
@@ -126,6 +128,7 @@ class _StockScreenState extends State<StockScreen>
                 children: [
                   _tabList(_holdings, holding: true),
                   _tabList(_watch, holding: false),
+                  const DailyPicksScreen(embedded: true),
                 ],
               ),
       ),

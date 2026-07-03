@@ -293,24 +293,26 @@ class _BillsScreenState extends State<BillsScreen>
             height: 40,
             child: Row(children: [
               _typeFilterButton(),
-              const Spacer(),
-              Flexible(
-                child: RichText(
-                  textAlign: TextAlign.right,
-                  overflow: TextOverflow.ellipsis,
-                  text: TextSpan(
-                    style: const TextStyle(fontSize: 12),
+              const SizedBox(width: 8),
+              // 收入/支出金额：两行右对齐，长数值用 FittedBox 缩放，保证完整显示不省略
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (_totalIncome > 0)
-                        TextSpan(
-                            text: '+¥${_moneyFmtInt.format(_totalIncome)}  ',
+                        Text('+¥${_moneyFmtInt.format(_totalIncome)}',
                             style: const TextStyle(
+                                fontSize: 12,
                                 color: AppColors.income,
                                 fontWeight: FontWeight.w600)),
                       if (_totalExpense > 0)
-                        TextSpan(
-                            text: '-¥${_moneyFmtInt.format(_totalExpense)}',
+                        Text('-¥${_moneyFmtInt.format(_totalExpense)}',
                             style: const TextStyle(
+                                fontSize: 12,
                                 color: AppColors.expense,
                                 fontWeight: FontWeight.w600)),
                     ],
@@ -1026,6 +1028,13 @@ class _BillTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
+  /// 记账人只显示首字（中文取第一个字，英文取首字母并大写）
+  String _recorderInitial(String name) {
+    final s = name.trim();
+    if (s.isEmpty) return '';
+    return String.fromCharCodes(s.runes.take(1)).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1070,7 +1079,7 @@ class _BillTile extends StatelessWidget {
                           color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(bill.recorderName!,
+                        child: Text(_recorderInitial(bill.recorderName!),
                             style: TextStyle(
                                 fontSize: 10,
                                 color: AppColors.text2,

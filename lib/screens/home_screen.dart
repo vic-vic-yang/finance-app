@@ -15,11 +15,9 @@ import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
-import 'add_bill_screen.dart';
 import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
-import 'bills_screen.dart';
 import 'cfo_screen.dart';
 import 'ledgers_screen.dart';
 import 'profile_screen.dart';
@@ -29,7 +27,6 @@ import 'tools/tax_calculator_screen.dart';
 import 'tools/investment_calculator_screen.dart';
 import 'tools/exchange_screen.dart';
 import 'tools/stock_screen.dart';
-import 'tools/daily_picks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onSwitchTab});
@@ -48,7 +45,6 @@ class _HomeScreenState extends State<HomeScreen>
   bool get wantKeepAlive => true;
 
   List<Account> _accounts    = [];
-  List<Bill>    _recentBills  = [];
   List<Ledger>  _ledgers      = [];
   Ledger?       _currentLedger;
   double _income  = 0;
@@ -128,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen>
 
       final results = await Future.wait([
         ApiService.getAccounts(),
-        ApiService.getBills(limit: 8),
         ApiService.getStats(startDate: start, endDate: end),
         ApiService.getLedgers(),
         // AI 洞察：实时算，失败不应影响首页其他数据
@@ -140,22 +135,20 @@ class _HomeScreenState extends State<HomeScreen>
       final cfoProps = await cfoFuture;
 
       if (!mounted) return;
-      final ledgers = (results[3]['ledgers'] as List? ?? [])
+      final ledgers = (results[2]['ledgers'] as List? ?? [])
           .map((l) => Ledger.fromJson(l as Map<String, dynamic>))
           .toList();
-      final currentId = results[3]['currentLedgerId'] as String?;
+      final currentId = results[2]['currentLedgerId'] as String?;
       setState(() {
         _accounts = (results[0]['accounts'] as List? ?? [])
             .map((a) => Account.fromJson(a as Map<String, dynamic>)).toList();
-        _recentBills = (results[1]['bills'] as List? ?? [])
-            .map((b) => Bill.fromJson(b as Map<String, dynamic>)).toList();
-        final sum = (results[2]['summary'] as Map?) ?? {};
+        final sum = (results[1]['summary'] as Map?) ?? {};
         _income  = (sum['totalIncome']  as num?)?.toDouble() ?? 0;
         _expense = (sum['totalExpense'] as num?)?.toDouble() ?? 0;
-        final asset = (results[2]['assetSummary'] as Map?) ?? {};
+        final asset = (results[1]['assetSummary'] as Map?) ?? {};
         _familyTotal = (asset['total']  as num?)?.toDouble() ?? 0;
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
-        _insights = (results[4]['insights'] as List? ?? [])
+        _insights = (results[3]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _cfoCount = cfoProps.length;
         _cfoHasCritical = cfoProps.any((p) => p.severity == 'critical');
@@ -221,41 +214,6 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(child: _accountsList()),
               ] else
                 SliverToBoxAdapter(child: _noAccount()),
-              if (_recentBills.isEmpty)
-                ...[
-                  _sectionTitle('最近账单'),
-                  SliverToBoxAdapter(child: _emptyBills()),
-                ]
-              else ...[
-                _sectionTitleWithAction(
-                  '最近账单',
-                  '全部',
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const BillsScreen()),
-                  ),
-                ),
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => _BillRow(
-                      bill: _recentBills[i],
-                      showRecorder:
-                          _currentLedger != null && _currentLedger!.isShared,
-                      onTap: () async {
-                        final ok = await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  AddBillScreen(bill: _recentBills[i])),
-                        );
-                        if (ok == true && mounted) _load();
-                      },
-                    ),
-                    childCount: _recentBills.length,
-                  ),
-                ),
-              ],
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ],
@@ -748,7 +706,6 @@ class _HomeScreenState extends State<HomeScreen>
       _QuickTool('📈', '定投', (_) => const InvestmentCalculatorScreen()),
       _QuickTool('💱', '汇率', (_) => const ExchangeScreen()),
       _QuickTool('🔍', '股票', (_) => const StockScreen()),
-      _QuickTool('🎯', '机会股', (_) => const DailyPicksScreen()),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -949,25 +906,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-  Widget _emptyBills() => Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
-        child: Column(children: [
-          Text('🧾', style: TextStyle(fontSize: 40)),
-          SizedBox(height: 10),
-          Text('还没有账单，点上方「记一笔」开始',
-              style: TextStyle(color: AppColors.text2, fontSize: 14)),
-        ]),
-      );
-
-  SliverToBoxAdapter _sectionTitle(String t) => SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-          child: Text(t,
-              style: TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1)),
-        ),
-      );
-
   SliverToBoxAdapter _sectionTitleWithAction(
           String t, String actionText, VoidCallback onTap) =>
       SliverToBoxAdapter(
@@ -1097,93 +1035,6 @@ class _OthersAccountCard extends StatelessWidget {
           ],
         ),
       );
-}
-
-// ── 账单行 ────────────────────────────────────────────────────
-class _BillRow extends StatelessWidget {
-  const _BillRow(
-      {required this.bill, this.showRecorder = false, this.onTap});
-  final Bill bill;
-  final bool showRecorder;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: bill.isIncome ? AppColors.incomeLight : AppColors.expenseLight,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Center(
-              child: Text(bill.category.icon ?? (bill.isIncome ? '💰' : '💸'),
-                  style: const TextStyle(fontSize: 19)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(bill.category.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.text1)),
-                ),
-                if (showRecorder && bill.recorderName != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(bill.recorderName!,
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.text2,
-                            fontWeight: FontWeight.w500)),
-                  ),
-                ],
-              ]),
-              const SizedBox(height: 2),
-              Builder(builder: (_) {
-                final accName = bill.account.nameOf(bill.ledgerId);
-                return Text(
-                  bill.note.isEmpty ? accName : '$accName  ${bill.note}',
-                  style: TextStyle(fontSize: 12, color: AppColors.text2),
-                  overflow: TextOverflow.ellipsis,
-                );
-              }),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(bill.amountText,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: bill.isIncome ? AppColors.income : AppColors.expense)),
-            const SizedBox(height: 2),
-            Text(DateFormat('MM/dd HH:mm').format(bill.date),
-                style: TextStyle(fontSize: 11, color: AppColors.text2)),
-          ]),
-        ]),
-      ));
 }
 
 // ── 账本快速切换 sheet ──────────────────────────────────────
