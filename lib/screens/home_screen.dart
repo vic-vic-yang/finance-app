@@ -20,13 +20,7 @@ import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'cfo_screen.dart';
 import 'ledgers_screen.dart';
-import 'profile_screen.dart';
 import 'recurring_screen.dart';
-import 'tools/loan_calculator_screen.dart';
-import 'tools/tax_calculator_screen.dart';
-import 'tools/investment_calculator_screen.dart';
-import 'tools/exchange_screen.dart';
-import 'tools/stock_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onSwitchTab});
@@ -66,6 +60,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// 家庭资产（含其他成员私人账户的总和）
   double _familyTotal = 0;
   double _othersTotal = 0;
+  double _receivable = 0; // 债权：借出未收回
+  double _payable = 0; // 负债：借入未还
+  double _netWorth = 0; // 净资产 = 账户余额 + 债权 − 负债
 
   /// AI 洞察 feed
   List<AiInsight> _insights = [];
@@ -148,6 +145,9 @@ class _HomeScreenState extends State<HomeScreen>
         final asset = (results[1]['assetSummary'] as Map?) ?? {};
         _familyTotal = (asset['total']  as num?)?.toDouble() ?? 0;
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
+        _receivable  = (asset['receivable'] as num?)?.toDouble() ?? 0;
+        _payable     = (asset['payable']    as num?)?.toDouble() ?? 0;
+        _netWorth    = (asset['netWorth']   as num?)?.toDouble() ?? _familyTotal;
         _insights = (results[3]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _cfoCount = cfoProps.length;
@@ -189,10 +189,11 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
+              // 有借贷往来时显示「净资产」拆解（含债权/负债），修正借出后资产缩水
+              SliverToBoxAdapter(child: _netWorthCard()),
               // 没有待处理建议时不显示 CFO 复盘卡（避免空状态占位）
               if (_cfoCount > 0)
                 SliverToBoxAdapter(child: _cfoEntryCard()),
-              SliverToBoxAdapter(child: _quickToolsRow()),
               if (_insights.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '🤖 AI 洞察',
@@ -227,10 +228,8 @@ class _HomeScreenState extends State<HomeScreen>
     final greeting = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
     final l = _currentLedger;
     return AuraSliverAppBar(
-      avatarTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ProfileScreen()),
-      ),
+      // 头像点击切到底部「我的」tab（ProfileScreen 现在是 tab）
+      avatarTap: () => widget.onSwitchTab?.call(3),
       actions: [
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           AiButton(
@@ -561,6 +560,58 @@ class _HomeScreenState extends State<HomeScreen>
     if (result == true && mounted) _load();
   }
 
+  /// 净资产拆解卡：仅当有借贷往来（债权/负债）时显示。
+  /// 净资产 = 可动用（账户余额）+ 债权（借出未收）− 负债（借入未还）。
+  Widget _netWorthCard() {
+    if (_receivable <= 0.009 && _payable <= 0.009) {
+      return const SizedBox.shrink();
+    }
+    Widget row(String label, String value, {Color? color}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            Text(label, style: TextStyle(fontSize: 12, color: AppColors.text3)),
+            const Spacer(),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: color ?? AppColors.text2)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('净资产', style: TextStyle(fontSize: 12, color: AppColors.text2)),
+            const SizedBox(height: 3),
+            Text(fmtMoney(_netWorth),
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                    color: AppColors.text1)),
+            const Divider(height: 18),
+            row('可动用（账户）', fmtMoney(_familyTotal)),
+            if (_receivable > 0.009)
+              row('债权（借出）', '+${fmtMoney(_receivable)}',
+                  color: AppColors.income),
+            if (_payable > 0.009)
+              row('负债（借入）', '-${fmtMoney(_payable)}',
+                  color: AppColors.expense),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _summaryCard() {
     final now     = DateTime.now();
     final balance = _income - _expense;
@@ -698,60 +749,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// 首页快捷工具：一排横向入口，直接进各计算器/汇率/股票
-  Widget _quickToolsRow() {
-    final tools = <_QuickTool>[
-      _QuickTool('🏦', '贷款', (_) => const LoanCalculatorScreen()),
-      _QuickTool('🧾', '个税', (_) => const TaxCalculatorScreen()),
-      _QuickTool('📈', '定投', (_) => const InvestmentCalculatorScreen()),
-      _QuickTool('💱', '汇率', (_) => const ExchangeScreen()),
-      _QuickTool('🔍', '股票', (_) => const StockScreen()),
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: GlassCard(
-        radius: 16,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            for (final t in tools)
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: t.builder),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceAlt,
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: Center(
-                          child: Text(t.icon,
-                              style: const TextStyle(fontSize: 22)),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(t.label,
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.text2)),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _accountsList() {
     final mine   = _accounts.where((a) => !a.isShared).toList();
@@ -932,14 +929,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-}
-
-/// 首页快捷工具项
-class _QuickTool {
-  final String icon;
-  final String label;
-  final WidgetBuilder builder;
-  _QuickTool(this.icon, this.label, this.builder);
 }
 
 // ── 账户卡片 ──────────────────────────────────────────────────

@@ -745,6 +745,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     required String title,
     required String emoji,
     required List<Widget> children,
+    VoidCallback? onInfo,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -766,6 +767,15 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.text1)),
+              if (onInfo != null) ...[
+                const Spacer(),
+                GestureDetector(
+                  onTap: onInfo,
+                  behavior: HitTestBehavior.opaque,
+                  child: Icon(Icons.help_outline_rounded,
+                      size: 16, color: AppColors.text3),
+                ),
+              ],
             ]),
             const SizedBox(height: 10),
             ...children,
@@ -828,6 +838,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     return _sectionCard(
       title: '本期账单',
       emoji: '💳',
+      onInfo: () => _showCreditExplain(a),
       children: [
         // 两个核心数：本期账单 / 未还
         Row(children: [
@@ -869,6 +880,91 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       ],
     );
   }
+
+  /// 信用卡口径说人话：当前欠款 / 本期账单 / 未还 / 下期未出账
+  void _showCreditExplain(Account a) {
+    final i = a.info;
+    final owed = a.balance < 0 ? -a.balance : 0.0;
+    String m(double? v) => '¥${_moneyFmt.format(v ?? 0)}';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('信用卡这些数怎么看',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text1)),
+            const SizedBox(height: 16),
+            _explainRow('当前欠款', m(owed),
+                '你此刻欠银行的总额，含下面的「下期未出账」。要还清这个数才算不欠钱。'),
+            _explainRow('本期账单', m(i?.periodBill),
+                '上个账单日已出账、这期该还的钱。'),
+            _explainRow('未还', m(i?.unpaid),
+                '本期账单里还没还的部分。还款日前还清即可，别逾期。'),
+            _explainRow('下期未出账', m(i?.ongoingSpent),
+                '出账日之后新刷的消费，要等下个账单日才出账。'),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('关系：当前欠款 ≈ 未还 + 下期未出账（＋更早未还结转）。',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.text2, height: 1.4)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _explainRow(String k, String v, String desc) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Text(k,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text1)),
+              const Spacer(),
+              Text(v,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary)),
+            ]),
+            const SizedBox(height: 3),
+            Text(desc,
+                style:
+                    TextStyle(fontSize: 12, color: AppColors.text2, height: 1.4)),
+          ],
+        ),
+      );
 
   Widget _bigStat(String label, String value, Color color) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

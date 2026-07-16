@@ -5,9 +5,8 @@ import '../core/update_checker.dart';
 import '../widgets/glass.dart';
 import 'home_screen.dart';
 import 'stats_screen.dart';
-import 'budgets_screen.dart';
 import 'bills_screen.dart';
-import 'news_screen.dart';
+import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -27,21 +26,19 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  // tab 顺序：0=主页 1=账单 2=资讯 3=预算 4=统计
-  static const _labels      = ['主页', '账单', '资讯', '预算', '统计'];
+  // tab 顺序：0=主页 1=账单 2=统计 3=我的
+  static const _labels      = ['主页', '账单', '统计', '我的'];
   static const _icons       = [
     Icons.home_outlined,
     Icons.receipt_long_outlined,
-    Icons.newspaper_outlined,
-    Icons.account_balance_wallet_outlined,
     Icons.bar_chart_outlined,
+    Icons.person_outline_rounded,
   ];
   static const _activeIcons = [
     Icons.home_rounded,
     Icons.receipt_long_rounded,
-    Icons.newspaper_rounded,
-    Icons.account_balance_wallet_rounded,
     Icons.bar_chart_rounded,
+    Icons.person_rounded,
   ];
 
   @override
@@ -56,9 +53,8 @@ class _MainScreenState extends State<MainScreen> {
         final pages = <Widget>[
           HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
           const BillsScreen(isTab: true),
-          const NewsScreen(),
-          BudgetsScreen(),
           StatsScreen(),
+          const ProfileScreen(),
         ];
         return Scaffold(
           backgroundColor: Colors.transparent,

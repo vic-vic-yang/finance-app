@@ -256,6 +256,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
               if (d.externalId != null) 'externalId': d.externalId,
               'source': _sourceOf(item),
               if (d.balance != null) 'bankBalance': d.balance,
+              if (d.merchantHash != null) 'merchantHash': d.merchantHash,
             });
           }
         } else {
@@ -272,6 +273,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
             if (d.externalId != null) 'externalId': d.externalId,
             'source': _sourceOf(item),
             if (d.balance != null) 'bankBalance': d.balance,
+            if (d.merchantHash != null) 'merchantHash': d.merchantHash,
           });
         }
       }

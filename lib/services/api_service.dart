@@ -826,15 +826,6 @@ class ApiService {
   /// 最新 APK 下载地址（浏览器打开即下载安装）
   static String get appDownloadUrl => '$baseUrl/app/download';
 
-  // ─── 财经资讯 ─────────────────────────────────────────────
-  /// 拉取最新财经新闻（后端按需补抓）。返回 { articles: [...] }
-  static Future<Map<String, dynamic>> getNews({int limit = 50}) =>
-      _get('/news', params: {'limit': '$limit'});
-
-  /// 强制后端立即重新抓取（下拉刷新）。返回 { inserted, articles }
-  static Future<Map<String, dynamic>> refreshNews() =>
-      _post('/news/refresh', {}, timeout: const Duration(seconds: 40));
-
   /// 查询/更新某只股票：取最新数据 + 分析并保存快照。q 可为名称或代码。
   /// 返回 { quote, analysis, news, updatedAt }。后端要解析+抓行情+分析，给足超时。
   static Future<Map<String, dynamic>> getStock(String q) async {
@@ -864,14 +855,6 @@ class ApiService {
   }
 
   /// 设置/更新某股票持仓（买入价、数量；≤0 清空）。返回 { holding }
-  // ─── 每日机会股 ───────────────────────────────────────────
-  /// 最新一期「每日机会股」+ 板块解读
-  static Future<Map<String, dynamic>> getDailyPicks() => _get('/picks/today');
-
-  /// 手动触发生成（首次/补算用，幂等）
-  static Future<Map<String, dynamic>> runDailyPicks() =>
-      _post('/picks/run', {});
-
   static Future<Map<String, dynamic>> setStockHolding(
     String symbol, {
     required double buyPrice,
@@ -884,15 +867,6 @@ class ApiService {
         'accountId': accountId,
       });
 
-  /// 新闻详情：后端抓正文 + LLM 要点分析（懒加载，首次较慢）。返回 { article }
-  static Future<Map<String, dynamic>> getNewsDetail(String id) async {
-    final uri = Uri.parse('$baseUrl/news/$id');
-    final res = await _client
-        .get(uri, headers: await _headers())
-        .timeout(const Duration(seconds: 45));
-    final body = _decode(res);
-    return (body is Map) ? body.cast<String, dynamic>() : <String, dynamic>{};
-  }
 
   // ─── 工具箱 · 汇率 ────────────────────────────────────────
   /// 获取以 [base] 为基准的最新汇率表（后端代理 + 缓存）。

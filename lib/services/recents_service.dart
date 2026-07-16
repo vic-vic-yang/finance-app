@@ -27,6 +27,21 @@ class RecentsService {
     await prefs.setStringList(_key(type), next);
   }
 
+  // ── 上次使用的账户（记一笔智能默认） ──────────────────────
+  static const String _lastAccKey = 'last_account_id';
+
+  static Future<String?> lastAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_lastAccKey);
+    return (v != null && v.isNotEmpty) ? v : null;
+  }
+
+  static Future<void> setLastAccount(String accountId) async {
+    if (accountId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastAccKey, accountId);
+  }
+
   /// 清理（用户删了某分类，或换账本时可调用）
   static Future<void> remove(String type, String categoryId) async {
     final prefs = await SharedPreferences.getInstance();

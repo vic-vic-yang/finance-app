@@ -39,9 +39,9 @@ class ToolsScreen extends StatelessWidget {
         builder: (_) => const ExchangeScreen(),
       ),
       _ToolItem(
-        icon: '🔍',
-        title: '股票分析',
-        subtitle: '查询并收藏股票，看关键指标 + 评级 + AI 分析，随时更新',
+        icon: '📊',
+        title: '我的持仓',
+        subtitle: '记录持仓，自动算市值 / 盈亏，每日结算进净资产',
         builder: (_) => const StockScreen(),
       ),
     ];

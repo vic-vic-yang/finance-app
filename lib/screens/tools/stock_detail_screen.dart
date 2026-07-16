@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../widgets/glass.dart';
 import '../../services/api_service.dart';
@@ -27,8 +26,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   Map<String, dynamic>? _quote;
   Map<String, dynamic>? _live; // 进详情时取的最新价
   Map<String, dynamic>? _holding; // 持仓 {buyPrice, shares}
-  Map<String, dynamic> _analysis = {};
-  List<Map<String, dynamic>> _news = [];
   List<Map<String, dynamic>> _history = [];
   String? _updatedAt;
 
@@ -103,11 +100,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
       final h = res['holding'];
       _holding = h is Map ? h.cast<String, dynamic>() : null;
     }
-    final a = res['analysis'];
-    if (a is Map) _analysis = a.cast<String, dynamic>();
-    _news = ((res['news'] as List?) ?? _news)
-        .map((e) => (e as Map).cast<String, dynamic>())
-        .toList();
     _history = ((res['history'] as List?) ?? [])
         .map((e) => (e as Map).cast<String, dynamic>())
         .toList();
@@ -150,30 +142,11 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                       _updateBar(),
                       const SizedBox(height: 14),
                       _holdingCard(),
-                      if (_str('rating').isNotEmpty ||
-                          _str('suggestion').isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _ratingCard(),
-                      ],
                       const SizedBox(height: 14),
                       _metricsCard(),
-                      const SizedBox(height: 14),
-                      _analystCard(),
-                      if (_str('business').isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _businessCard(),
-                      ],
-                      if (_str('market').isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _marketCard(),
-                      ],
                       if (_history.length > 1) ...[
                         const SizedBox(height: 14),
                         _historyCard(),
-                      ],
-                      if (_news.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _newsCard(),
                       ],
                     ],
                   ),
@@ -227,7 +200,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                 height: 14,
                 child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.refresh_rounded, size: 18),
-        label: Text(_updating ? '更新中…' : '更新最新分析'),
+        label: Text(_updating ? '更新中…' : '更新行情'),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
           side: BorderSide(color: AppColors.primary.withOpacity(0.5)),
@@ -400,127 +373,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
     );
   }
 
-  // ── 分析师评级 ─────────────────────────────────────────────
-  Widget _analystCard() {
-    final q = _quote!;
-    final rec = (q['recommendation'] ?? '').toString();
-    final price = _d(q['price']);
-    final tMean = _d(q['targetMean']);
-    final tHigh = _d(q['targetHigh']);
-    final tLow = _d(q['targetLow']);
-    final count = _d(q['analystCount']);
-    final t = (q['recTrend'] as Map?)?.cast<String, dynamic>() ?? {};
-    int g(String k) => (_d(t[k]) ?? 0).toInt();
-    final upside = (price != null && tMean != null && price > 0)
-        ? (tMean - price) / price * 100
-        : null;
-    return ToolResultCard(
-      title: '分析师评级',
-      children: [
-        Row(children: [
-          _recBadge(rec),
-          const Spacer(),
-          if (count != null)
-            Text('${count.toInt()} 位分析师',
-                style: TextStyle(fontSize: 12, color: AppColors.text3)),
-        ]),
-        const SizedBox(height: 12),
-        if (tMean != null)
-          ToolResultRow(
-            label: '目标均价',
-            value:
-                '${_fmtPrice(tMean)}${upside == null ? '' : '  (${upside >= 0 ? '+' : ''}${upside.toStringAsFixed(1)}%)'}',
-            emphasize: true,
-            valueColor: upside == null
-                ? null
-                : (upside >= 0 ? AppColors.income : AppColors.expense),
-          ),
-        if (tLow != null && tHigh != null)
-          ToolResultRow(
-              label: '目标区间',
-              value: '${_fmtPrice(tLow)} ~ ${_fmtPrice(tHigh)}'),
-        const SizedBox(height: 8),
-        _recBars([
-          ['强力买入', g('strongBuy'), AppColors.income],
-          ['买入', g('buy'), AppColors.income.withOpacity(0.7)],
-          ['持有', g('hold'), AppColors.warning],
-          ['卖出', g('sell'), AppColors.expense.withOpacity(0.7)],
-          ['强力卖出', g('strongSell'), AppColors.expense],
-        ]),
-        if (_str('analyst').isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(_str('analyst'),
-              style:
-                  TextStyle(fontSize: 13.5, height: 1.6, color: AppColors.text2)),
-        ],
-      ],
-    );
-  }
-
-  Widget _recBadge(String rec) {
-    final map = {
-      'strong_buy': ['强力买入', AppColors.income],
-      'buy': ['买入', AppColors.income],
-      'hold': ['持有', AppColors.warning],
-      'underperform': ['减持', AppColors.expense],
-      'sell': ['卖出', AppColors.expense],
-    };
-    final m = map[rec];
-    final label = m?[0] as String? ?? (rec.isEmpty ? '无评级' : rec);
-    final color = m?[1] as Color? ?? AppColors.text3;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w700, color: color)),
-    );
-  }
-
-  Widget _recBars(List<List<dynamic>> rows) {
-    final total =
-        rows.fold<int>(0, (s, r) => s + (r[1] as int)).clamp(1, 1 << 30);
-    return Column(
-      children: [
-        for (final r in rows)
-          if ((r[1] as int) > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(children: [
-                SizedBox(
-                  width: 56,
-                  child: Text(r[0] as String,
-                      style: TextStyle(fontSize: 12, color: AppColors.text2)),
-                ),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: (r[1] as int) / total,
-                      minHeight: 6,
-                      backgroundColor: AppColors.surfaceAlt,
-                      valueColor: AlwaysStoppedAnimation(r[2] as Color),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text('${r[1]}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.text2)),
-              ]),
-            ),
-      ],
-    );
-  }
-
-  String _str(String k) => (_analysis[k] ?? '').toString().trim();
-
-  // ── 我的持仓 / 盈亏 ────────────────────────────────────────
   Widget _holdingCard() {
     final cur = (_quote?['currency'] ?? _live?['currency'] ?? '').toString();
     final buyPrice = _d(_holding?['buyPrice']);
@@ -643,91 +495,9 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                         : shares.toString(),
                     AppColors.text2)),
           ]),
-          _holdingAdvice(),
         ],
       ),
     );
-  }
-
-  /// AI 每日持仓决策建议（随每日结算生成；未生成时引导）
-  Widget _holdingAdvice() {
-    final adv = _holding?['advice'];
-    final hasAccount = _holding?['accountId'] != null;
-    if (adv is! Map) {
-      if (!hasAccount) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Row(children: [
-          Icon(Icons.schedule_rounded, size: 14, color: AppColors.text3),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text('每天 15:00 收盘后会生成 AI 持仓建议',
-                style: TextStyle(fontSize: 11.5, color: AppColors.text3)),
-          ),
-        ]),
-      );
-    }
-    final action = (adv['action'] ?? '').toString();
-    final reason = (adv['reason'] ?? '').toString();
-    final at = _fmtUpdated((_holding?['adviceAt'] ?? '').toString());
-    final c = _actionColor(action);
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.psychology_outlined, size: 16, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Text('AI 持仓建议',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text1)),
-            if (action.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: c.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(action,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: c)),
-              ),
-            ],
-            const Spacer(),
-            if (at.isNotEmpty)
-              Text(at, style: TextStyle(fontSize: 10.5, color: AppColors.text3)),
-          ]),
-          if (reason.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(reason,
-                style: TextStyle(
-                    fontSize: 12.5, height: 1.55, color: AppColors.text2)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Color _actionColor(String a) {
-    if (a.contains('加仓') || a.contains('买')) return AppColors.income;
-    if (a.contains('清仓') || a.contains('减仓') || a.contains('止损')) {
-      return AppColors.expense;
-    }
-    if (a.contains('观望')) return AppColors.warning;
-    return AppColors.primary; // 持有
   }
 
   Widget _hItem(String label, String value, Color color) => Column(
@@ -772,214 +542,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('保存持仓失败')));
       }
-    }
-  }
-
-  Color _ratingColor(String r) {
-    if (r.contains('买入') || r.contains('增持')) return AppColors.income;
-    if (r.contains('卖出') || r.contains('减持') || r.contains('回避')) {
-      return AppColors.expense;
-    }
-    if (r.contains('中性') || r.contains('持有')) return AppColors.warning;
-    return AppColors.primary;
-  }
-
-  // ── 综合评级 + 买入建议 ────────────────────────────────────
-  Widget _ratingCard() {
-    final rating = _str('rating');
-    final suggestion = _str('suggestion');
-    final color = _ratingColor(rating);
-    return GlassCard(
-      radius: 18,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Text('AI 综合评级 · 买入建议',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text1)),
-            const Spacer(),
-            if (rating.isNotEmpty)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(rating,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ),
-          ]),
-          if (suggestion.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(suggestion,
-                style: TextStyle(
-                    fontSize: 14, height: 1.65, color: AppColors.text1)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ── 公司简介 / 主营业务 ────────────────────────────────────
-  Widget _businessCard() {
-    final q = _quote!;
-    final sector = (q['sector'] ?? '').toString();
-    final industry = (q['industry'] ?? '').toString();
-    final tag = [sector, industry].where((s) => s.isNotEmpty).join(' · ');
-    return GlassCard(
-      radius: 18,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('公司简介 · 主营业务',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.text2)),
-          if (tag.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(tag,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.primary)),
-          ],
-          const SizedBox(height: 8),
-          Text(_str('business'),
-              style: TextStyle(
-                  fontSize: 14, height: 1.65, color: AppColors.text1)),
-        ],
-      ),
-    );
-  }
-
-  // ── 市场动态 ──────────────────────────────────────────────
-  Widget _marketCard() => GlassCard(
-        radius: 18,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.show_chart_rounded, size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text('市场动态',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.text1)),
-            ]),
-            const SizedBox(height: 10),
-            Text(_str('market'),
-                style: TextStyle(
-                    fontSize: 14, height: 1.65, color: AppColors.text1)),
-          ],
-        ),
-      );
-
-  // ── 相关新闻 ──────────────────────────────────────────────
-  Widget _newsCard() {
-    return GlassCard(
-      radius: 18,
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.article_outlined, size: 18, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Text('相关新闻',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text1)),
-          ]),
-          const SizedBox(height: 6),
-          for (int i = 0; i < _news.length; i++) ...[
-            if (i > 0)
-              Divider(height: 1, color: AppColors.border.withOpacity(0.6)),
-            _newsRow(_news[i]),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _newsRow(Map<String, dynamic> n) {
-    final zh = (n['titleZh'] ?? '').toString().trim();
-    final title = zh.isNotEmpty ? zh : (n['title'] ?? '').toString();
-    final publisher = (n['publisher'] ?? '').toString();
-    final time = _relTime(n['publishedAt'] as String?);
-    return InkWell(
-      onTap: () => _openUrl((n['url'] ?? '').toString()),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.4,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.text1)),
-                  const SizedBox(height: 3),
-                  Text(
-                    [publisher, time].where((s) => s.isNotEmpty).join('  ·  '),
-                    style: TextStyle(fontSize: 11.5, color: AppColors.text3),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Icon(Icons.open_in_new_rounded, size: 15, color: AppColors.text3),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _relTime(String? iso) {
-    if (iso == null) return '';
-    final d = DateTime.tryParse(iso);
-    if (d == null) return '';
-    final diff = DateTime.now().difference(d.toLocal());
-    if (diff.inMinutes < 60) return '${diff.inMinutes.clamp(1, 59)}分钟前';
-    if (diff.inHours < 24) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
-    return DateFormat('M月d日').format(d.toLocal());
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    for (final mode in [
-      LaunchMode.externalApplication,
-      LaunchMode.platformDefault,
-      LaunchMode.inAppBrowserView,
-    ]) {
-      try {
-        if (await launchUrl(uri, mode: mode)) return;
-      } catch (_) {/* 试下一种 */}
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('无法打开链接')));
     }
   }
 

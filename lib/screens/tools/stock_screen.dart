@@ -5,9 +5,8 @@ import '../../core/theme.dart';
 import '../../widgets/glass.dart';
 import '../../services/api_service.dart';
 import 'stock_detail_screen.dart';
-import 'daily_picks_screen.dart';
 
-/// 股票分析：我查询过的股票列表（按股票分），可查询新股票、进入看分析并更新。
+/// 我的持仓：只展示自己持有的股票，自动算市值/盈亏、每日结算进净资产。
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
 
@@ -15,30 +14,19 @@ class StockScreen extends StatefulWidget {
   State<StockScreen> createState() => _StockScreenState();
 }
 
-class _StockScreenState extends State<StockScreen>
-    with SingleTickerProviderStateMixin {
+class _StockScreenState extends State<StockScreen> {
   List<Map<String, dynamic>> _list = [];
   List<Map<String, dynamic>> _pnlDaily = [];
   bool _loading = true;
-  late final TabController _tab;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
     _load();
-  }
-
-  @override
-  void dispose() {
-    _tab.dispose();
-    super.dispose();
   }
 
   List<Map<String, dynamic>> get _holdings =>
       _list.where((s) => s['held'] == true).toList();
-  List<Map<String, dynamic>> get _watch =>
-      _list.where((s) => s['held'] != true).toList();
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -93,49 +81,16 @@ class _StockScreenState extends State<StockScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AuraAppBar(
-        title: '股票分析',
-        actions: [
-          IconButton(
-            tooltip: '查询股票',
-            icon: const Icon(Icons.search_rounded),
-            onPressed: _search,
-          ),
-          const SizedBox(width: 8),
-        ],
-        bottom: TabBar(
-          controller: _tab,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.text3,
-          indicatorColor: AppColors.primary,
-          indicatorSize: TabBarIndicatorSize.label,
-          labelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          unselectedLabelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          tabs: [
-            Tab(text: '持仓 ${_holdings.length}'),
-            Tab(text: '关注 ${_watch.length}'),
-            const Tab(text: '机会股'),
-          ],
-        ),
-      ),
+      appBar: const AuraAppBar(title: '我的持仓'),
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : TabBarView(
-                controller: _tab,
-                children: [
-                  _tabList(_holdings, holding: true),
-                  _tabList(_watch, holding: false),
-                  const DailyPicksScreen(embedded: true),
-                ],
-              ),
+            : _tabList(_holdings, holding: true),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _search,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('查询股票'),
+        label: const Text('添加持仓'),
         // 覆盖主题里 FAB 的 CircleBorder，否则带文字的扩展 FAB 会被挤成圆形
         shape: const StadiumBorder(),
         extendedPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -267,6 +222,65 @@ class _StockScreenState extends State<StockScreen>
   }
 
   /// 持仓总览：今日总盈亏 + 总市值/成本/总盈亏（客户端按实时价聚合所有持仓）
+  /// 持仓收益口径说人话
+  void _showPnlExplain() {
+    Widget bullet(String title, String desc) => Padding(
+          padding: const EdgeInsets.only(bottom: 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text1)),
+              const SizedBox(height: 3),
+              Text(desc,
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.text2, height: 1.45)),
+            ],
+          ),
+        );
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('持仓收益怎么算',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text1)),
+            const SizedBox(height: 16),
+            bullet('今日盈亏', '按最新价，今日每股涨跌 × 持股数（和券商「今日」口径一致）。'),
+            bullet('总盈亏', '（现价 − 成本价）× 持股数。'),
+            bullet('自动结算', '每个交易日 15:30 收盘后自动把当日盈亏记进关联账户，账户余额 ≈ 最新市值、计入净资产。'),
+            bullet('和券商对不上？',
+                '多半是分红 / 除权：除权日价格会跌掉派息，但你拿到了现金，而价差口径不含分红。可到账户详情用「校准余额」按券商实际市值修正。'),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _portfolioSummary(List<Map<String, dynamic>> holdings) {
     double cost = 0, mv = 0, todayPnl = 0;
     bool hasToday = false;
@@ -305,6 +319,13 @@ class _StockScreenState extends State<StockScreen>
           Row(children: [
             Text('今日盈亏',
                 style: TextStyle(fontSize: 12, color: AppColors.text2)),
+            const SizedBox(width: 5),
+            GestureDetector(
+              onTap: _showPnlExplain,
+              behavior: HitTestBehavior.opaque,
+              child: Icon(Icons.help_outline_rounded,
+                  size: 14, color: AppColors.text3),
+            ),
             const Spacer(),
             Text('$counted 只持仓',
                 style: TextStyle(fontSize: 11, color: AppColors.text3)),

@@ -47,6 +47,8 @@ class _AddBillScreenState extends State<AddBillScreen>
   List<Account> _allAccounts = [];
   Category? _selectedCategory;
   Account? _selectedAccount;
+  /// 最近使用的分类 id（income/expense 各一份，最新在前），用作智能默认
+  Map<String, List<String>> _recentCatIds = const {'expense': [], 'income': []};
   /// 编辑他人记的、在其私人账户上的账单时锁定账户（避免误改成自己的账户）
   bool _accountLocked = false;
   /// 转账目的地账户（可以是其他成员的私人账户）
@@ -143,9 +145,10 @@ class _AddBillScreenState extends State<AddBillScreen>
           _type = 'transfer';
           break;
       }
-      _selectedCategory = _filteredCategories.isNotEmpty
-          ? _filteredCategories.first
-          : null;
+      // 切 tab 后默认分类也走"最近使用优先"
+      _selectedCategory = _isTransfer
+          ? null
+          : _defaultCategoryFor(_type, _categories);
       // 初次切到转账，默认 from = 当前选中账户，to = 选第一个不同的账户
       if (_isTransfer) {
         _ensureTransferDefaults();
@@ -168,6 +171,18 @@ class _AddBillScreenState extends State<AddBillScreen>
     }
   }
 
+  /// 某类型的默认分类：最近使用优先，回退到该类型第一个
+  Category? _defaultCategoryFor(String type, List<Category> all) {
+    final typed = all.where((c) => c.type == type).toList();
+    if (typed.isEmpty) return null;
+    for (final id in _recentCatIds[type] ?? const <String>[]) {
+      for (final c in typed) {
+        if (c.id == id) return c;
+      }
+    }
+    return typed.first;
+  }
+
   Future<void> _loadData() async {
     try {
       final results = await Future.wait([
@@ -176,6 +191,11 @@ class _AddBillScreenState extends State<AddBillScreen>
         // 拉一次"全部账户"用于转账目的地（含他人私人账户，余额已隐藏）
         ApiService.getAccounts(scope: 'all'),
       ]);
+      // 智能默认（本地缓存）：最近分类 + 上次账户
+      final recentExpense = await RecentsService.get('expense');
+      final recentIncome = await RecentsService.get('income');
+      final lastAccId = await RecentsService.lastAccount();
+      _recentCatIds = {'expense': recentExpense, 'income': recentIncome};
       if (!mounted) return;
 
       final allCats = (results[0]['categories'] as List? ?? [])
@@ -214,13 +234,14 @@ class _AddBillScreenState extends State<AddBillScreen>
         );
         _accountLocked = !isMyAcc;
       } else {
-        final typed = allCats.where((c) => c.type == _type).toList();
-        if (typed.isNotEmpty) initCat = typed.first;
+        // 分类默认：最近使用的优先（没记录再用第一个）
+        initCat = _defaultCategoryFor(_type, allCats);
         if (myAccounts.isNotEmpty) {
-          // 有预选账户（从账户详情"记一笔"进来）就用它，否则用第一个
-          initAcc = widget.initialAccountId != null
+          // 账户默认：预选账户（从账户详情进来）> 上次使用 > 第一个
+          final preferId = widget.initialAccountId ?? lastAccId;
+          initAcc = preferId != null
               ? myAccounts.firstWhere(
-                  (a) => a.id == widget.initialAccountId,
+                  (a) => a.id == preferId,
                   orElse: () => myAccounts.first,
                 )
               : myAccounts.first;
@@ -430,8 +451,9 @@ class _AddBillScreenState extends State<AddBillScreen>
           date: _date,
         );
       }
-      // 把这次用的分类提到"最近"最前（不阻塞返回）
+      // 记住这次用的分类/账户，作为下次的智能默认（不阻塞返回）
       await RecentsService.add(_type, _selectedCategory!.id);
+      await RecentsService.setLastAccount(_selectedAccount!.id);
       if (!mounted) return;
       bumpRefresh();
       Navigator.pop(context, true);
