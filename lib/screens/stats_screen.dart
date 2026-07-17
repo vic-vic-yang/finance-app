@@ -25,6 +25,9 @@ class _StatsScreenState extends State<StatsScreen>
   _Period _period = _Period.month;
   DateTime _anchor = DateTime(DateTime.now().year, DateTime.now().month);
   double _totalIncome = 0;
+  double _prevIncome = 0; // 上一期（环比基准）
+  double _prevExpense = 0;
+  Map<String, double> _prevCatTotal = {}; // 上一期各分类合计（by id）
   double _totalExpense = 0;
   List<_CatStat> _expenseStats = [];
   List<_CatStat> _incomeStats = [];
@@ -72,6 +75,24 @@ class _StatsScreenState extends State<StatsScreen>
     return '${_anchor.year}-${_anchor.month.toString().padLeft(2, '0')}-${last.toString().padLeft(2, '0')}';
   }
 
+  /// 上一期（环比基准）：月视图=上月，年视图=去年
+  DateTime get _prevAnchor => _period == _Period.year
+      ? DateTime(_anchor.year - 1, 1)
+      : DateTime(_anchor.year, _anchor.month - 1);
+
+  String get _prevStartDate {
+    final p = _prevAnchor;
+    if (_period == _Period.year) return '${p.year}-01-01';
+    return '${p.year}-${p.month.toString().padLeft(2, '0')}-01';
+  }
+
+  String get _prevEndDate {
+    final p = _prevAnchor;
+    if (_period == _Period.year) return '${p.year}-12-31';
+    final last = DateTime(p.year, p.month + 1, 0).day;
+    return '${p.year}-${p.month.toString().padLeft(2, '0')}-${last.toString().padLeft(2, '0')}';
+  }
+
   String get _periodLabel {
     if (_period == _Period.year) return '${_anchor.year}年';
     return DateFormat('yyyy年M月').format(_anchor);
@@ -80,9 +101,22 @@ class _StatsScreenState extends State<StatsScreen>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final res = await ApiService.getStats(
-          startDate: _startDate, endDate: _endDate);
+      // 当前期 + 上一期并行拉，供环比对比；上一期失败不影响主数据
+      final results = await Future.wait([
+        ApiService.getStats(startDate: _startDate, endDate: _endDate),
+        ApiService.getStats(startDate: _prevStartDate, endDate: _prevEndDate)
+            .catchError((_) => <String, dynamic>{}),
+      ]);
+      final res = results[0];
+      final prevRes = results[1];
       if (!mounted) return;
+      final prevSum = (prevRes['summary'] as Map?) ?? {};
+      final prevCats = <String, double>{};
+      for (final e in (prevRes['categoryStats'] as List? ?? [])) {
+        final m = e as Map<String, dynamic>;
+        prevCats[m['id'] as String? ?? ''] =
+            (m['total'] as num?)?.toDouble() ?? 0;
+      }
       final sum = (res['summary'] as Map?) ?? {};
       final rawStats = (res['categoryStats'] as List? ?? [])
           .map((e) => _CatStat.fromJson(e as Map<String, dynamic>))
@@ -90,6 +124,9 @@ class _StatsScreenState extends State<StatsScreen>
       final asset = (res['assetSummary'] as Map?) ?? {};
       final trendRaw = (res['assetTrend'] as List? ?? []);
       setState(() {
+        _prevIncome = (prevSum['totalIncome'] as num?)?.toDouble() ?? 0;
+        _prevExpense = (prevSum['totalExpense'] as num?)?.toDouble() ?? 0;
+        _prevCatTotal = prevCats;
         _totalIncome = (sum['totalIncome'] as num?)?.toDouble() ?? 0;
         _totalExpense = (sum['totalExpense'] as num?)?.toDouble() ?? 0;
         _expenseStats =
@@ -482,18 +519,29 @@ class _StatsScreenState extends State<StatsScreen>
   // ── Summary row ───────────────────────────────────────────────
   Widget _summaryRow() => Row(children: [
         _summaryCard('收入', _totalIncome, AppColors.income,
-            AppColors.incomeLight),
+            AppColors.incomeLight, prev: _prevIncome),
         const SizedBox(width: 10),
         _summaryCard('支出', _totalExpense, AppColors.expense,
-            AppColors.expenseLight),
+            AppColors.expenseLight, prev: _prevExpense),
         const SizedBox(width: 10),
         _summaryCard('结余', _totalIncome - _totalExpense,
-            AppColors.primary, AppColors.primaryLight),
+            AppColors.primary, AppColors.primaryLight,
+            prev: _prevIncome - _prevExpense),
       ]);
 
+  /// 环比文案：上一期为 0/负基准时不给百分比（没意义）
+  String? _momText(double cur, double prev) {
+    if (prev.abs() < 0.01) return cur.abs() < 0.01 ? null : '上期 ¥0';
+    final pct = (cur - prev) / prev.abs() * 100;
+    if (pct.abs() < 0.5) return '与上期持平';
+    return '比上期${pct > 0 ? '↑' : '↓'}${pct.abs().toStringAsFixed(0)}%';
+  }
+
   Widget _summaryCard(
-      String label, double amount, Color color, Color bg) =>
-      Expanded(
+      String label, double amount, Color color, Color bg,
+      {double? prev}) {
+    final mom = prev != null ? _momText(amount, prev) : null;
+    return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
@@ -514,9 +562,17 @@ class _StatsScreenState extends State<StatsScreen>
                   letterSpacing: -0.5),
               overflow: TextOverflow.ellipsis,
             ),
+            if (mom != null) ...[
+              const SizedBox(height: 3),
+              Text(mom,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: AppColors.text2)),
+            ],
           ]),
         ),
       );
+  }
 
   // ── Member breakdown card（按记账人统计） ─────────────────
   Widget _memberCard() {
@@ -799,6 +855,17 @@ class _StatsScreenState extends State<StatsScreen>
   }
 
   // ── Category list ─────────────────────────────────────────────
+  /// 分类行的环比小注：" · 比上期↑23%" / " · 新增"；变化<1% 或无基准则空
+  String _catMomText(_CatStat s) {
+    final prev = _prevCatTotal[s.id];
+    if (prev == null || prev < 0.01) {
+      return _prevCatTotal.isEmpty ? '' : ' · 新增';
+    }
+    final pct = (s.total - prev) / prev * 100;
+    if (pct.abs() < 1) return '';
+    return ' · 比上期${pct > 0 ? '↑' : '↓'}${pct.abs().toStringAsFixed(0)}%';
+  }
+
   Widget _categoryList() {
     final stats = _currentStats;
     final total = _currentTotal > 0 ? _currentTotal : 1;
@@ -845,7 +912,7 @@ class _StatsScreenState extends State<StatsScreen>
                             ]),
                             const SizedBox(height: 2),
                             Row(children: [
-                              Text('${s.count}笔',
+                              Text('${s.count}笔${_catMomText(s)}',
                                   style: TextStyle(
                                       fontSize: 12, color: AppColors.text2)),
                               const Spacer(),

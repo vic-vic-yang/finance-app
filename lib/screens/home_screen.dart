@@ -446,86 +446,77 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _insightCard(AiInsight ins, {VoidCallback? onChanged}) {
-    // 主题感知配色（暗色模式不再刺眼）：critical=红、warning=沙、info=主题色
-    Color borderColor;
-    Color bgColor;
-    switch (ins.severity) {
+  /// 标题里的 emoji 前缀（🔴🟡…）去掉——严重度改用左侧色条表达，画面更安静
+  String _cleanTitle(String t) =>
+      t.replaceFirst(RegExp(r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]+\s*', unicode: true), '');
+
+  Color _severityColor(String severity) {
+    switch (severity) {
       case 'critical':
-        borderColor = AppColors.income.withOpacity(0.55);
-        bgColor = AppColors.incomeLight;
-        break;
+        return AppColors.income; // 哑红
       case 'warning':
-        borderColor = AppColors.warning.withOpacity(0.55);
-        bgColor = AppColors.warningLight;
-        break;
+        return AppColors.warning; // 琥珀
       default:
-        borderColor = AppColors.primary.withOpacity(0.35);
-        bgColor = AppColors.primaryLight;
+        return AppColors.primary;
     }
+  }
+
+  Widget _insightCard(AiInsight ins, {VoidCallback? onChanged}) {
+    final accent = _severityColor(ins.severity);
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor, width: 0.6),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 左侧严重度色条：代替刺眼的整卡彩底
+          Container(width: 3, color: accent),
+          const SizedBox(width: 11),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ins.title,
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (ins.body.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                   Text(
-                    ins.body,
+                    _cleanTitle(ins.title),
                     style: TextStyle(
-                        fontSize: 12, color: AppColors.text2, height: 1.3),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text1,
+                    ),
                   ),
-                ],
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    for (final a in ins.actions)
-                      TextButton(
-                        onPressed: () => _handleInsightAction(ins, a),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 2,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(a.label),
-                      ),
-                    // 每条洞察都能一键抛给司库助手追问
-                    TextButton(
-                      onPressed: () => _askAiAboutInsight(ins),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2,
-                        ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('问 AI'),
+                  if (ins.body.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      ins.body,
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.text2, height: 1.35),
                     ),
                   ],
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (final a in ins.actions) ...[
+                        _insightChip(a.label,
+                            onTap: () => _handleInsightAction(ins, a)),
+                        const SizedBox(width: 8),
+                      ],
+                      // 每条洞察都能一键抛给司库助手追问
+                      _insightChip('问 AI',
+                          icon: Icons.auto_awesome_rounded,
+                          onTap: () => _askAiAboutInsight(ins)),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           GestureDetector(
@@ -535,15 +526,41 @@ class _HomeScreenState extends State<HomeScreen>
             },
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: const EdgeInsets.only(left: 4, top: 1, bottom: 1),
+              padding: const EdgeInsets.fromLTRB(10, 12, 12, 0),
               child: Icon(Icons.close_rounded,
-                  size: 16, color: AppColors.text3),
+                  size: 15, color: AppColors.text3),
             ),
           ),
         ],
+        ),
       ),
     );
   }
+
+  /// 洞察卡上的迷你操作（ghost chip）：主题色描边小胶囊，克制不喧宾
+  Widget _insightChip(String label, {IconData? icon, VoidCallback? onTap}) =>
+      GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.primary.withOpacity(0.45)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[
+              Icon(icon, size: 11, color: AppColors.primary),
+              const SizedBox(width: 4),
+            ],
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary)),
+          ]),
+        ),
+      );
 
   /// 把一条洞察抛给司库助手追问（进入对话页并自动发出问题）
   Future<void> _askAiAboutInsight(AiInsight ins) async {
@@ -738,9 +755,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// CFO 复盘条：并入 AI 管家流的第一条（样式对齐洞察卡），点进 [CfoScreen]
+  /// CFO 复盘条：并入 AI 管家流的第一条（同洞察卡语言：surface + 左色条）
   Widget _cfoStrip() {
-    final color = _cfoHasCritical ? AppColors.expense : AppColors.primary;
+    final accent =
+        _cfoHasCritical ? AppColors.income : AppColors.primary;
     return GestureDetector(
       onTap: () async {
         await Navigator.push(
@@ -750,30 +768,50 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted) _load();
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: color.withOpacity(0.35), width: 0.6),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
         ),
-        child: Row(children: [
-          const Text('🧮', style: TextStyle(fontSize: 16)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _cfoHasCritical
-                  ? 'CFO 复盘：$_cfoCount 件需要注意'
-                  : 'CFO 复盘：$_cfoCount 条建议待处理',
-              style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: _cfoHasCritical ? AppColors.expense : AppColors.text1),
-            ),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 3, color: accent),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(children: [
+                    Icon(Icons.fact_check_outlined,
+                        size: 16, color: accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _cfoHasCritical
+                            ? 'CFO 复盘：$_cfoCount 件需要注意'
+                            : 'CFO 复盘：$_cfoCount 条建议待处理',
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.text1),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: Icon(Icons.chevron_right_rounded,
+                      size: 18, color: AppColors.text3),
+                ),
+              ),
+            ],
           ),
-          Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.text3),
-        ]),
+        ),
       ),
     );
   }

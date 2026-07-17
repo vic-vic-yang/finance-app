@@ -1,3 +1,18 @@
+/// 预算里某成员的花费（家庭共同预算「谁花了多少」）
+class BudgetMemberSpent {
+  final String userId;
+  final String name;
+  final double spent;
+  BudgetMemberSpent(
+      {required this.userId, required this.name, required this.spent});
+  factory BudgetMemberSpent.fromJson(Map<String, dynamic> j) =>
+      BudgetMemberSpent(
+        userId: j['userId'] as String? ?? '',
+        name: j['name'] as String? ?? '成员',
+        spent: (j['spent'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 class Budget {
   final String id;
   final String? categoryId;
@@ -10,6 +25,7 @@ class Budget {
   final String period; // MONTHLY / YEARLY
   final DateTime periodStart;
   final DateTime periodEnd;
+  final List<BudgetMemberSpent> members;
 
   Budget({
     required this.id,
@@ -23,6 +39,7 @@ class Budget {
     required this.period,
     required this.periodStart,
     required this.periodEnd,
+    this.members = const [],
   });
 
   factory Budget.fromJson(Map<String, dynamic> j) => Budget(
@@ -39,6 +56,10 @@ class Budget {
         period: j['period'] as String? ?? 'MONTHLY',
         periodStart: DateTime.parse(j['periodStart'] as String),
         periodEnd: DateTime.parse(j['periodEnd'] as String),
+        members: ((j['members'] as List?) ?? [])
+            .map((e) =>
+                BudgetMemberSpent.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
   bool get isOverall => categoryId == null;

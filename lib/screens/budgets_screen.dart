@@ -1173,8 +1173,60 @@ class _BudgetCard extends StatelessWidget {
                   fontWeight: FontWeight.w500),
             ),
           ]),
+          // 家庭共同预算：≥2 人有花费时显示「谁花了多少」拆解
+          if (budget.members.length >= 2) ...[
+            const SizedBox(height: 8),
+            _memberSplit(color),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 成员花费拆解：分段条 + 名字·金额（按花费降序，颜色透明度递减区分）
+  Widget _memberSplit(Color color) {
+    final total = budget.members.fold<double>(0, (s, m) => s + m.spent);
+    if (total <= 0) return const SizedBox.shrink();
+    Color segColor(int i) =>
+        color.withOpacity((0.85 - i * 0.3).clamp(0.25, 0.85));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            height: 3,
+            child: Row(children: [
+              for (var i = 0; i < budget.members.length; i++)
+                Expanded(
+                  flex: (budget.members[i].spent / total * 1000).round(),
+                  child: Container(color: segColor(i)),
+                ),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Wrap(
+          spacing: 12,
+          runSpacing: 2,
+          children: [
+            for (var i = 0; i < budget.members.length; i++)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                      color: segColor(i), shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${budget.members[i].name} ${fmtMoneyInt(budget.members[i].spent)}',
+                  style: TextStyle(fontSize: 10.5, color: AppColors.text2),
+                ),
+              ]),
+          ],
+        ),
+      ],
     );
   }
 }
