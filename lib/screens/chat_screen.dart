@@ -19,7 +19,9 @@ import '../services/auth_service.dart';
 ///   billIds，前端拉这些账单解密后本地构造 MerchantCard
 class ChatScreen extends StatefulWidget {
   final String ledgerId;
-  const ChatScreen({super.key, required this.ledgerId});
+  /// 进入后自动替用户发出的第一句话（如从洞察卡「问 AI」跳来）
+  final String? initialPrompt;
+  const ChatScreen({super.key, required this.ledgerId, this.initialPrompt});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -30,6 +32,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   final List<ChatTurn> _turns = [];
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.initialPrompt?.trim();
+    if (p != null && p.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _send(p));
+    }
+  }
 
   static const _suggestions = <String>[
     '这个月花了多少？',

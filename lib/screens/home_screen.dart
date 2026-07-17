@@ -191,12 +191,10 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               // 有借贷往来时显示「净资产」拆解（含债权/负债），修正借出后资产缩水
               SliverToBoxAdapter(child: _netWorthCard()),
-              // 没有待处理建议时不显示 CFO 复盘卡（避免空状态占位）
-              if (_cfoCount > 0)
-                SliverToBoxAdapter(child: _cfoEntryCard()),
-              if (_insights.isNotEmpty) ...[
+              // AI 管家：CFO 复盘 + 洞察合成一条流（都为空时整块不显示）
+              if (_insights.isNotEmpty || _cfoCount > 0) ...[
                 _sectionTitleWithAction(
-                  '🤖 AI 洞察',
+                  '🤖 AI 管家',
                   '查看全部',
                   _showAllInsightsSheet,
                 ),
@@ -351,12 +349,13 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── AI 洞察列表 ──────────────────────────────────────────
+  // ── AI 管家流（CFO 复盘条 + 洞察卡） ─────────────────────
   Widget _insightsList() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(
         children: [
+          if (_cfoCount > 0) _cfoStrip(),
           for (final ins in _insights.take(4)) _insightCard(ins),
           if (_insights.length > 4)
             GestureDetector(
@@ -414,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
                 child: Row(
                   children: [
-                    const Text('🤖 AI 洞察',
+                    const Text('🤖 AI 管家',
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700)),
                     const Spacer(),
@@ -425,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               Expanded(
-                child: _insights.isEmpty
+                child: _insights.isEmpty && _cfoCount == 0
                     ? Center(
                         child: Text('暂无洞察',
                             style: TextStyle(color: AppColors.text3)))
@@ -433,6 +432,7 @@ class _HomeScreenState extends State<HomeScreen>
                         controller: controller,
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                         children: [
+                          if (_cfoCount > 0) _cfoStrip(),
                           for (final ins in _insights)
                             _insightCard(ins,
                                 onChanged: () => setSheet(() {})),
@@ -447,20 +447,21 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _insightCard(AiInsight ins, {VoidCallback? onChanged}) {
+    // 主题感知配色（暗色模式不再刺眼）：critical=红、warning=沙、info=主题色
     Color borderColor;
     Color bgColor;
     switch (ins.severity) {
       case 'critical':
-        borderColor = Colors.red.shade300;
-        bgColor = Colors.red.shade50;
+        borderColor = AppColors.income.withOpacity(0.55);
+        bgColor = AppColors.incomeLight;
         break;
       case 'warning':
-        borderColor = Colors.orange.shade300;
-        bgColor = Colors.orange.shade50;
+        borderColor = AppColors.warning.withOpacity(0.55);
+        bgColor = AppColors.warningLight;
         break;
       default:
-        borderColor = Colors.blue.shade200;
-        bgColor = Colors.blue.shade50;
+        borderColor = AppColors.primary.withOpacity(0.35);
+        bgColor = AppColors.primaryLight;
     }
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -492,27 +493,38 @@ class _HomeScreenState extends State<HomeScreen>
                         fontSize: 12, color: AppColors.text2, height: 1.3),
                   ),
                 ],
-                if (ins.actions.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      for (final a in ins.actions)
-                        TextButton(
-                          onPressed: () => _handleInsightAction(ins, a),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 2,
-                            ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final a in ins.actions)
+                      TextButton(
+                        onPressed: () => _handleInsightAction(ins, a),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 2,
                           ),
-                          child: Text(a.label),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                    ],
-                  ),
-                ],
+                        child: Text(a.label),
+                      ),
+                    // 每条洞察都能一键抛给司库助手追问
+                    TextButton(
+                      onPressed: () => _askAiAboutInsight(ins),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('问 AI'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -533,6 +545,22 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// 把一条洞察抛给司库助手追问（进入对话页并自动发出问题）
+  Future<void> _askAiAboutInsight(AiInsight ins) async {
+    final l = _currentLedger;
+    if (l == null || l.id.isEmpty) return;
+    final q = ins.body.isEmpty
+        ? '帮我看看这条提醒：${ins.title}。是什么情况，我该怎么处理？'
+        : '帮我看看这条提醒：${ins.title}（${ins.body}）。是什么情况，我该怎么处理？';
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(ledgerId: l.id, initialPrompt: q),
+      ),
+    );
+    if (mounted) _load();
+  }
+
   Future<void> _dismissInsight(AiInsight ins) async {
     setState(() => _insights.remove(ins));
     try {
@@ -549,6 +577,18 @@ class _HomeScreenState extends State<HomeScreen>
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const RecurringScreen()),
+      );
+      if (mounted) _load();
+      return;
+    }
+    if (a.intent == 'openAccount') {
+      // 信用卡还款提醒 → 跳账户详情（还款/校准都在里面）
+      final accountId = (a.params?['accountId'] ?? '') as String;
+      if (accountId.isEmpty) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => AccountDetailScreen(accountId: accountId)),
       );
       if (mounted) _load();
     }
@@ -698,52 +738,41 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// CFO 复盘入口卡：显示待处理建议数，点进 [CfoScreen]
-  Widget _cfoEntryCard() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: GlassCard(
-        radius: 16,
-        padding: const EdgeInsets.all(16),
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CfoScreen()),
-          );
-          if (mounted) _load();
-        },
+  /// CFO 复盘条：并入 AI 管家流的第一条（样式对齐洞察卡），点进 [CfoScreen]
+  Widget _cfoStrip() {
+    final color = _cfoHasCritical ? AppColors.expense : AppColors.primary;
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CfoScreen()),
+        );
+        if (mounted) _load();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: color.withOpacity(0.35), width: 0.6),
+        ),
         child: Row(children: [
-          const Text('🧮', style: TextStyle(fontSize: 22)),
-          const SizedBox(width: 12),
+          const Text('🧮', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('CFO 复盘',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: _cfoHasCritical
-                            ? AppColors.expense
-                            : AppColors.text1)),
-                const SizedBox(height: 1),
-                Text(
-                  _cfoHasCritical
-                      ? '有 $_cfoCount 件需要注意'
-                      : (_cfoCount > 0
-                          ? '有 $_cfoCount 条建议待处理'
-                          : '一切正常，点开看看'),
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: _cfoHasCritical
-                          ? AppColors.expense
-                          : AppColors.text2),
-                ),
-              ],
+            child: Text(
+              _cfoHasCritical
+                  ? 'CFO 复盘：$_cfoCount 件需要注意'
+                  : 'CFO 复盘：$_cfoCount 条建议待处理',
+              style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: _cfoHasCritical ? AppColors.expense : AppColors.text1),
             ),
           ),
-          Icon(Icons.chevron_right_rounded,
-              color: _cfoHasCritical ? AppColors.expense : AppColors.text3),
+          Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.text3),
         ]),
       ),
     );

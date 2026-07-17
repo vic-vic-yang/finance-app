@@ -284,8 +284,10 @@ class AccountInfo {
   });
 
   factory AccountInfo.fromJson(Map<String, dynamic> j) {
+    // 后端给的是 UTC ISO 串，这里必须转回本地时区再显示，
+    // 否则 7/5 00:00+08:00 会被格式化成 7/4（差一天）
     DateTime? p(dynamic x) =>
-        x is String && x.isNotEmpty ? DateTime.parse(x) : null;
+        x is String && x.isNotEmpty ? DateTime.parse(x).toLocal() : null;
     return AccountInfo(
       kind: j['kind'] as String? ?? '',
       periodStart: p(j['periodStart']),
