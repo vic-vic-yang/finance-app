@@ -203,7 +203,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         label: Text(_updating ? '更新中…' : '更新行情'),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
-          side: BorderSide(color: AppColors.primary.withOpacity(0.5)),
+          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -428,7 +428,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.12),
+                  color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(5),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [

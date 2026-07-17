@@ -15,7 +15,6 @@ import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
-import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'cfo_screen.dart';
@@ -60,9 +59,6 @@ class _HomeScreenState extends State<HomeScreen>
   /// 家庭资产（含其他成员私人账户的总和）
   double _familyTotal = 0;
   double _othersTotal = 0;
-  double _receivable = 0; // 债权：借出未收回
-  double _payable = 0; // 负债：借入未还
-  double _netWorth = 0; // 净资产 = 账户余额 + 债权 − 负债
 
   /// AI 洞察 feed
   List<AiInsight> _insights = [];
@@ -145,9 +141,6 @@ class _HomeScreenState extends State<HomeScreen>
         final asset = (results[1]['assetSummary'] as Map?) ?? {};
         _familyTotal = (asset['total']  as num?)?.toDouble() ?? 0;
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
-        _receivable  = (asset['receivable'] as num?)?.toDouble() ?? 0;
-        _payable     = (asset['payable']    as num?)?.toDouble() ?? 0;
-        _netWorth    = (asset['netWorth']   as num?)?.toDouble() ?? _familyTotal;
         _insights = (results[3]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _cfoCount = cfoProps.length;
@@ -189,17 +182,7 @@ class _HomeScreenState extends State<HomeScreen>
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                 sliver: SliverToBoxAdapter(child: _summaryCard()),
               ),
-              // 有借贷往来时显示「净资产」拆解（含债权/负债），修正借出后资产缩水
-              SliverToBoxAdapter(child: _netWorthCard()),
-              // AI 管家：CFO 复盘 + 洞察合成一条流（都为空时整块不显示）
-              if (_insights.isNotEmpty || _cfoCount > 0) ...[
-                _sectionTitleWithAction(
-                  '🤖 AI 管家',
-                  '查看全部',
-                  _showAllInsightsSheet,
-                ),
-                SliverToBoxAdapter(child: _insightsList()),
-              ],
+              // 我的账户紧跟结余卡（净资产拆解已整合进统计页）
               if (_accounts.isNotEmpty) ...[
                 _sectionTitleWithAction(
                   '我的账户',
@@ -213,6 +196,15 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(child: _accountsList()),
               ] else
                 SliverToBoxAdapter(child: _noAccount()),
+              // AI 管家：CFO 复盘 + 洞察合成一条流（都为空时整块不显示）
+              if (_insights.isNotEmpty || _cfoCount > 0) ...[
+                _sectionTitleWithAction(
+                  '🤖 AI 管家',
+                  '查看全部',
+                  _showAllInsightsSheet,
+                ),
+                SliverToBoxAdapter(child: _insightsList()),
+              ],
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ],
@@ -226,33 +218,23 @@ class _HomeScreenState extends State<HomeScreen>
     final greeting = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
     final l = _currentLedger;
     return AuraSliverAppBar(
-      // 头像点击切到底部「我的」tab（ProfileScreen 现在是 tab）
-      avatarTap: () => widget.onSwitchTab?.call(3),
       actions: [
-        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
-          AiButton(
-            tooltip: '导入流水',
-            icon: Icons.file_upload_outlined,
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AiImportsScreen()),
-              );
-              if (mounted) _load();
-            },
-          ),
-        if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
-          const SizedBox(width: 10),
+        // 导入流水入口收进 我的→AI 导入，顶部只留司库助手（裸 icon，命中区放大）
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: AiButton(
-              tooltip: '司库助手',
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => ChatScreen(ledgerId: _currentLedger!.id),
                 ),
+              ),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Icon(Icons.auto_awesome_rounded,
+                    size: 22, color: AppColors.text1),
               ),
             ),
           ),
@@ -356,29 +338,8 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         children: [
           if (_cfoCount > 0) _cfoStrip(),
+          // 只展示前 4 条，更多的从右上「查看全部」进弹层看
           for (final ins in _insights.take(4)) _insightCard(ins),
-          if (_insights.length > 4)
-            GestureDetector(
-              onTap: _showAllInsightsSheet,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '查看其余 ${_insights.length - 4} 条',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600),
-                    ),
-                    Icon(Icons.keyboard_arrow_down_rounded,
-                        size: 18, color: AppColors.primary),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -471,19 +432,22 @@ class _HomeScreenState extends State<HomeScreen>
         border: Border.all(color: AppColors.border),
       ),
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Stack + 左侧贴边色条：高度完全跟随内容，杜绝 IntrinsicHeight 的像素溢出
+      child: Stack(
         children: [
-          // 左侧严重度色条：代替刺眼的整卡彩底
-          Container(width: 3, color: accent),
-          const SizedBox(width: 11),
+          Positioned(
+              left: 0, top: 0, bottom: 0,
+              child: Container(width: 3, color: accent)),
+          Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(width: 14),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     _cleanTitle(ins.title),
@@ -532,7 +496,8 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -546,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.primary.withOpacity(0.45)),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.45)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (icon != null) ...[
@@ -611,64 +576,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// 打开记一笔，返回后刷新首页
-  Future<void> _openAdd() async {
-    final result = await Navigator.pushNamed(context, '/add');
-    if (result == true && mounted) _load();
-  }
-
-  /// 净资产拆解卡：仅当有借贷往来（债权/负债）时显示。
-  /// 净资产 = 可动用（账户余额）+ 债权（借出未收）− 负债（借入未还）。
-  Widget _netWorthCard() {
-    if (_receivable <= 0.009 && _payable <= 0.009) {
-      return const SizedBox.shrink();
-    }
-    Widget row(String label, String value, {Color? color}) => Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Row(children: [
-            Text(label, style: TextStyle(fontSize: 12, color: AppColors.text3)),
-            const Spacer(),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: color ?? AppColors.text2)),
-          ]),
-        );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('净资产', style: TextStyle(fontSize: 12, color: AppColors.text2)),
-            const SizedBox(height: 3),
-            Text(fmtMoney(_netWorth),
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                    color: AppColors.text1)),
-            const Divider(height: 18),
-            row('可动用（账户）', fmtMoney(_familyTotal)),
-            if (_receivable > 0.009)
-              row('债权（借出）', '+${fmtMoney(_receivable)}',
-                  color: AppColors.income),
-            if (_payable > 0.009)
-              row('负债（借入）', '-${fmtMoney(_payable)}',
-                  color: AppColors.expense),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _summaryCard() {
     final now     = DateTime.now();
     final balance = _income - _expense;
@@ -692,14 +599,9 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(
-              child: Text('${now.year}年${now.month}月结余',
-                  style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
-            ),
-            // 记一笔入口
-            _recordButton(fg),
-          ]),
+          // 记一笔已移到底部导航中央「+」
+          Text('${now.year}年${now.month}月结余',
+              style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12)),
           const SizedBox(height: 4),
           Text(fmtMoney(balance),
               style: TextStyle(
@@ -708,32 +610,10 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _summaryItem('收入', _income)),
-            Container(width: 1, height: 28, color: fg.withOpacity(0.2)),
+            Container(width: 1, height: 28, color: fg.withValues(alpha: 0.2)),
             Expanded(child: _summaryItem('支出', _expense)),
           ]),
         ],
-      ),
-    );
-  }
-
-  /// 结余卡上的「记一笔」按钮（半透明胶囊，落在渐变上）
-  Widget _recordButton(Color fg) {
-    return Material(
-      color: fg.withOpacity(0.18),
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: _openAdd,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.add_rounded, size: 17, color: fg),
-            const SizedBox(width: 4),
-            Text('记一笔',
-                style: TextStyle(
-                    color: fg, fontSize: 13, fontWeight: FontWeight.w600)),
-          ]),
-        ),
       ),
     );
   }
@@ -745,7 +625,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: fg.withOpacity(0.7), fontSize: 11.5)),
+          Text(label, style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11.5)),
           const SizedBox(height: 3),
           Text(fmtMoney(amt),
               style: TextStyle(
@@ -775,42 +655,32 @@ class _HomeScreenState extends State<HomeScreen>
           border: Border.all(color: AppColors.border),
         ),
         clipBehavior: Clip.antiAlias,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 3, color: accent),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(children: [
-                    Icon(Icons.fact_check_outlined,
-                        size: 16, color: accent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _cfoHasCritical
-                            ? 'CFO 复盘：$_cfoCount 件需要注意'
-                            : 'CFO 复盘：$_cfoCount 条建议待处理',
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.text1),
-                      ),
-                    ),
-                  ]),
+        child: Stack(
+          children: [
+            Positioned(
+                left: 0, top: 0, bottom: 0,
+                child: Container(width: 3, color: accent)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+              child: Row(children: [
+                Icon(Icons.fact_check_outlined, size: 16, color: accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _cfoHasCritical
+                        ? 'CFO 复盘：$_cfoCount 件需要注意'
+                        : 'CFO 复盘：$_cfoCount 条建议待处理',
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text1),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Center(
-                  child: Icon(Icons.chevron_right_rounded,
-                      size: 18, color: AppColors.text3),
-                ),
-              ),
-            ],
-          ),
+                Icon(Icons.chevron_right_rounded,
+                    size: 18, color: AppColors.text3),
+              ]),
+            ),
+          ],
         ),
       ),
     );
@@ -925,7 +795,7 @@ class _HomeScreenState extends State<HomeScreen>
             boxShadow: sel
                 ? [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 4,
                         offset: const Offset(0, 1))
                   ]

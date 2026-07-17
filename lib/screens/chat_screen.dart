@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
 import '../widgets/glass.dart';
 import '../core/theme.dart';
 import '../core/refresh_bus.dart';
@@ -263,17 +265,21 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: isUser
-                        ? Theme.of(context).primaryColor.withOpacity(0.1)
+                        ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
                         : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(14).copyWith(
                       topLeft: isUser ? null : const Radius.circular(2),
                       topRight: isUser ? const Radius.circular(2) : null,
                     ),
                   ),
-                  child: Text(
-                    t.content,
-                    style: const TextStyle(fontSize: 14, height: 1.5),
-                  ),
+                  // 助手回复按 Markdown 渲染（表格/加粗/列表都正常显示）；
+                  // 用户消息保持纯文本
+                  child: isUser
+                      ? Text(
+                          t.content,
+                          style: const TextStyle(fontSize: 14, height: 1.5),
+                        )
+                      : _markdown(t.content),
                 ),
                 for (final c in t.cards) ...[
                   const SizedBox(height: 6),
@@ -287,6 +293,42 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 助手 Markdown 渲染：GFM（含表格），配色对齐主题
+  Widget _markdown(String content) {
+    const base = TextStyle(fontSize: 14, height: 1.5);
+    return MarkdownBody(
+      data: content,
+      selectable: true,
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+      styleSheet: MarkdownStyleSheet(
+        p: base.copyWith(color: AppColors.text1),
+        strong: base.copyWith(fontWeight: FontWeight.w700),
+        listBullet: base.copyWith(color: AppColors.text1),
+        h1: TextStyle(
+            fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text1),
+        h2: TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text1),
+        h3: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1),
+        code: TextStyle(
+            fontSize: 13,
+            backgroundColor: AppColors.surfaceAlt,
+            color: AppColors.text1),
+        blockquoteDecoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        tableHead: base.copyWith(
+            fontWeight: FontWeight.w700, fontSize: 12.5),
+        tableBody: base.copyWith(fontSize: 12.5),
+        tableBorder: TableBorder.all(color: AppColors.border, width: 0.7),
+        tableCellsPadding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        tableColumnWidth: const IntrinsicColumnWidth(),
       ),
     );
   }
@@ -689,10 +731,12 @@ class _CfoActionCardState extends State<_CfoActionCard> {
     setState(() => _busy = true);
     try {
       await ApiService.cfoDecide(widget.proposalId, 'approve');
-      setState(() => _state = 'done');
+      if (mounted) setState(() => _state = 'done');
     } catch (_) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('执行失败，请重试')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('执行失败，请重试')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

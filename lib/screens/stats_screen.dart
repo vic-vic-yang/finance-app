@@ -6,7 +6,6 @@ import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
 import '../widgets/glass.dart';
-import 'profile_screen.dart';
 import 'add_bill_screen.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -42,6 +41,9 @@ class _StatsScreenState extends State<StatsScreen>
   double _assetMine   = 0;
   double _assetShared = 0;
   double _assetOthers = 0;
+  double _receivable  = 0; // 债权：借出未收回
+  double _payable     = 0; // 负债：借入未还
+  double _netWorth    = 0; // 净资产 = 账户余额 + 债权 − 负债
   List<_AssetPoint> _assetTrend = [];
 
   // 多人账本：按记账人聚合
@@ -139,6 +141,9 @@ class _StatsScreenState extends State<StatsScreen>
         _assetMine = (asset['mine'] as num?)?.toDouble() ?? 0;
         _assetShared = (asset['shared'] as num?)?.toDouble() ?? 0;
         _assetOthers = (asset['others'] as num?)?.toDouble() ?? 0;
+        _receivable = (asset['receivable'] as num?)?.toDouble() ?? 0;
+        _payable = (asset['payable'] as num?)?.toDouble() ?? 0;
+        _netWorth = (asset['netWorth'] as num?)?.toDouble() ?? _assetTotal;
         _assetTrend = trendRaw
             .map((p) => _AssetPoint.fromJson(p as Map<String, dynamic>))
             .toList();
@@ -224,10 +229,6 @@ class _StatsScreenState extends State<StatsScreen>
       backgroundColor: Colors.transparent,
       appBar: AuraAppBar(
         title: '统计',
-        avatarTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -350,11 +351,13 @@ class _StatsScreenState extends State<StatsScreen>
     );
   }
 
-  // ── Asset card（家庭资产卡 + 走势线图） ────────────────────
+  // ── Asset card（净资产 + 拆解 + 走势线图） ─────────────────
   Widget _assetCard() {
     final hasShared = _assetShared.abs() > 0.01;
     final hasOthers = _assetOthers.abs() > 0.01;
     final isFamily = hasShared || hasOthers;
+    // 有借贷往来时标题升级为「净资产」，并展示 可动用/债权/负债 拆解
+    final hasLoans = _receivable > 0.009 || _payable > 0.009;
     return GlassCard(
       radius: 16,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
@@ -362,7 +365,7 @@ class _StatsScreenState extends State<StatsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Text(isFamily ? '家庭总资产' : '总资产',
+            Text(hasLoans ? '净资产' : (isFamily ? '家庭总资产' : '总资产'),
                 style: TextStyle(fontSize: 13, color: AppColors.text2)),
             const Spacer(),
             Text(_periodLabel,
@@ -380,7 +383,7 @@ class _StatsScreenState extends State<StatsScreen>
                       fontWeight: FontWeight.w500)),
               const SizedBox(width: 2),
               Text(
-                fmtMoney(_assetTotal),
+                fmtMoney(hasLoans ? _netWorth : _assetTotal),
                 style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -389,6 +392,18 @@ class _StatsScreenState extends State<StatsScreen>
               ),
             ],
           ),
+          if (hasLoans) ...[
+            const SizedBox(height: 6),
+            Wrap(spacing: 14, runSpacing: 4, children: [
+              _netWorthKv('可动用', fmtMoney(_assetTotal), AppColors.text2),
+              if (_receivable > 0.009)
+                _netWorthKv(
+                    '债权', '+${fmtMoney(_receivable)}', AppColors.income),
+              if (_payable > 0.009)
+                _netWorthKv(
+                    '负债', '-${fmtMoney(_payable)}', AppColors.expense),
+            ]),
+          ],
           if (isFamily) ...[
             const SizedBox(height: 4),
             Wrap(spacing: 12, runSpacing: 4, children: [
@@ -415,6 +430,17 @@ class _StatsScreenState extends State<StatsScreen>
     );
   }
 
+  Widget _netWorthKv(String label, String value, Color color) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: AppColors.text3)),
+          const SizedBox(width: 4),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w600, color: color)),
+        ],
+      );
+
   Widget _assetMiniStat(String label, double value, double dotOpacity) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -422,7 +448,7 @@ class _StatsScreenState extends State<StatsScreen>
             width: 5,
             height: 5,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(dotOpacity),
+              color: AppColors.primary.withValues(alpha: dotOpacity),
               shape: BoxShape.circle,
             ),
           ),
@@ -463,7 +489,7 @@ class _StatsScreenState extends State<StatsScreen>
                 final p = _assetTrend[i];
                 // 月度 → 显示 M/d；年度 → 显示 M月
                 final label = _period == _Period.year
-                    ? p.date.substring(5, 7) + '月'
+                    ? '${p.date.substring(5, 7)}月'
                     : p.date.substring(5).replaceFirst('-', '/');
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -505,8 +531,8 @@ class _StatsScreenState extends State<StatsScreen>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  AppColors.primary.withOpacity(0.18),
-                  AppColors.primary.withOpacity(0.0),
+                  AppColors.primary.withValues(alpha: 0.18),
+                  AppColors.primary.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -554,7 +580,7 @@ class _StatsScreenState extends State<StatsScreen>
                     fontSize: 12, color: color, fontWeight: FontWeight.w500)),
             const SizedBox(height: 6),
             Text(
-              '${fmtMoneyInt(amount.abs())}',
+              fmtMoneyInt(amount.abs()),
               style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -974,15 +1000,13 @@ class _StatsScreenState extends State<StatsScreen>
     );
   }
 
-  Widget _empty() => Container(
-        padding: const EdgeInsets.symmetric(vertical: 56),
-        child: Column(
-          children: [
-            Text('📊', style: TextStyle(fontSize: 48)),
-            SizedBox(height: 12),
-            Text('暂无数据',
-                style: TextStyle(color: AppColors.text2, fontSize: 16)),
-          ],
+  Widget _empty() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: EmptyState(
+          emoji: '📊',
+          title: '本期暂无数据',
+          hint: '记几笔账后，这里会给你分类占比和环比变化',
+          top: 0,
         ),
       );
 }

@@ -76,7 +76,7 @@ class _MainScreenState extends State<MainScreen> {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            AppColors.bg.withOpacity(0),
+                            AppColors.bg.withValues(alpha: 0),
                             AppColors.bg,
                           ],
                           stops: const [0.0, 0.72],
@@ -94,6 +94,8 @@ class _MainScreenState extends State<MainScreen> {
             icons: _icons,
             activeIcons: _activeIcons,
             onTap: (i) => setState(() => _index = i),
+            // 中央「+」记一笔（保存后 AddBillScreen 会 bumpRefresh 通知各页刷新）
+            onAdd: () => Navigator.pushNamed(context, '/add'),
           ),
         );
       },

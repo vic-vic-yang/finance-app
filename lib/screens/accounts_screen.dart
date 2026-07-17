@@ -11,7 +11,7 @@ import '../services/pending_dek_resolver.dart';
 import '../widgets/glass.dart';
 import 'account_detail_screen.dart';
 
-double math_pow(double a, double b) => math.pow(a, b).toDouble();
+double mathPow(double a, double b) => math.pow(a, b).toDouble();
 
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key});
@@ -128,7 +128,7 @@ class _AccountsScreenState extends State<AccountsScreen>
                         children: [
                           Text('我的资产',
                               style: TextStyle(
-                                  color: fg.withOpacity(0.7), fontSize: 13)),
+                                  color: fg.withValues(alpha: 0.7), fontSize: 13)),
                           const SizedBox(height: 6),
                           Text(fmtMoney(_mineBalance),
                               style: TextStyle(
@@ -139,7 +139,7 @@ class _AccountsScreenState extends State<AccountsScreen>
                           const SizedBox(height: 4),
                           Text('共 ${_mineAccounts.length} 个账户',
                               style: TextStyle(
-                                  color: fg.withOpacity(0.55), fontSize: 12)),
+                                  color: fg.withValues(alpha: 0.55), fontSize: 12)),
                         ],
                       )
                     // 有共享账户：我的资产 & 共享资产 并列（不再合并成总资产）
@@ -152,7 +152,7 @@ class _AccountsScreenState extends State<AccountsScreen>
                           ),
                           const SizedBox(width: 12),
                           Container(
-                              width: 1, height: 52, color: fg.withOpacity(0.15)),
+                              width: 1, height: 52, color: fg.withValues(alpha: 0.15)),
                           const SizedBox(width: 16),
                           Expanded(
                             child: _assetBig('共享资产', _sharedBalance,
@@ -314,7 +314,7 @@ class _AccountsScreenState extends State<AccountsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12.5)),
+                style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12.5)),
             const SizedBox(height: 5),
             Text(fmtMoney(value),
                 maxLines: 1,
@@ -326,7 +326,7 @@ class _AccountsScreenState extends State<AccountsScreen>
                     letterSpacing: -0.6)),
             const SizedBox(height: 3),
             Text('$count 个账户',
-                style: TextStyle(color: fg.withOpacity(0.55), fontSize: 11.5)),
+                style: TextStyle(color: fg.withValues(alpha: 0.55), fontSize: 11.5)),
           ],
         ),
       );
@@ -346,7 +346,7 @@ class _AccountsScreenState extends State<AccountsScreen>
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除',
-                style: TextStyle(color: AppColors.expense)),
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -379,33 +379,20 @@ class _AccountsScreenState extends State<AccountsScreen>
   }
 
   Widget _empty() => Center(
-        child: Padding(
-          // Aura 风：充分留白，移动端两侧至少 24
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🏦', style: TextStyle(fontSize: 56)),
-              const SizedBox(height: 16),
-              Text('还没有账户',
-                  style:
-                      TextStyle(color: AppColors.text2, fontSize: 16)),
-              const SizedBox(height: 6),
-              Text('点击下方按钮，添加你的第一个账户',
-                  style:
-                      TextStyle(color: AppColors.text2, fontSize: 13)),
-              const SizedBox(height: 28),
-              // 用 SizedBox 锁定宽度，避免被 ElevatedButton 主题里
-              // minimumSize: Size(infinity, 52) 撑到屏幕边
-              SizedBox(
-                width: 220,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showAccountSheet(context),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('添加账户'),
-                ),
-              ),
-            ],
+        child: EmptyState(
+          emoji: '🏦',
+          title: '还没有账户',
+          hint: '添加你的第一个账户，开始记录资产',
+          top: 0,
+          // 用 SizedBox 锁定宽度，避免被 ElevatedButton 主题里
+          // minimumSize: Size(infinity, 52) 撑到屏幕边
+          action: SizedBox(
+            width: 220,
+            child: ElevatedButton.icon(
+              onPressed: () => _showAccountSheet(context),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('添加账户'),
+            ),
           ),
         ),
       );
@@ -500,7 +487,7 @@ class _AccountTile extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.12),
+                      color: AppColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text('共享',
@@ -556,10 +543,10 @@ class _AccountTile extends StatelessWidget {
                           value: 'delete',
                           child: Row(children: [
                             Icon(Icons.delete_outline_rounded,
-                                size: 18, color: AppColors.expense),
+                                size: 18, color: AppColors.danger),
                             SizedBox(width: 10),
                             Text('删除',
-                                style: TextStyle(color: AppColors.expense)),
+                                style: TextStyle(color: AppColors.danger)),
                           ])),
                     ],
                     onSelected: (v) {
@@ -666,7 +653,7 @@ class _AccountTile extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(urgentText(),
@@ -680,7 +667,7 @@ class _AccountTile extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.income.withOpacity(0.12),
+                  color: AppColors.income.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -913,10 +900,10 @@ class _AccountGridCard extends StatelessWidget {
                           value: 'delete',
                           child: Row(children: [
                             Icon(Icons.delete_outline_rounded,
-                                size: 18, color: AppColors.expense),
+                                size: 18, color: AppColors.danger),
                             const SizedBox(width: 10),
                             Text('删除',
-                                style: TextStyle(color: AppColors.expense)),
+                                style: TextStyle(color: AppColors.danger)),
                           ])),
                     ],
                     onSelected: (v) {
@@ -1370,7 +1357,7 @@ class _AccountSheetState extends State<_AccountSheet> {
       case 'equal_payment':
       default:
         if (monthlyRate == 0) return p / n;
-        final pow = math_pow(1 + monthlyRate, n.toDouble());
+        final pow = mathPow(1 + monthlyRate, n.toDouble());
         return (p * monthlyRate * pow) / (pow - 1);
     }
   }
@@ -1780,15 +1767,6 @@ class _AccountSheetState extends State<_AccountSheet> {
     if (_errors.containsKey(key)) setState(() => _errors.remove(key));
   }
 
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.text1,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2238,4 +2216,19 @@ class _AccountSheetState extends State<_AccountSheet> {
     ),
     );
   }
+}
+
+/// 供其他页面（如账户详情）打开「编辑账户」底部弹层。
+/// 保存后走 bumpRefresh 通知全局刷新；返回的 Future 在弹层关闭时完成。
+Future<void> showAccountEditSheet(BuildContext context, Account account) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AccountSheet(
+      account: account,
+      onSaved: bumpRefresh,
+      fallbackLedgerId: account.ledgerId,
+    ),
+  );
 }

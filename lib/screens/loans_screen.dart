@@ -114,27 +114,10 @@ class _LoansScreenState extends State<LoansScreen> {
     );
   }
 
-  Widget _empty() => Padding(
-        padding: const EdgeInsets.only(top: 80),
-        child: Center(
-          child: Column(children: [
-            const Text('🤝', style: TextStyle(fontSize: 44)),
-            const SizedBox(height: 12),
-            Text('还没有借贷记录',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text1)),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text('点右下角「记一笔借贷」，记下借出/借入，写个备注、传张转账凭证就行。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: AppColors.text2, height: 1.6)),
-            ),
-          ]),
-        ),
+  Widget _empty() => const EmptyState(
+        emoji: '🤝',
+        title: '还没有借贷记录',
+        hint: '点右下角「记一笔借贷」，记下借出/借入，写个备注、传张转账凭证就行。',
       );
 
   Widget _summaryCard() {
@@ -154,7 +137,7 @@ class _LoansScreenState extends State<LoansScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('净往来（应收 − 应付）',
-              style: TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
+              style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12)),
           const SizedBox(height: 4),
           Text('${net >= 0 ? '' : '-'}¥${net.abs().toStringAsFixed(2)}',
               style: TextStyle(
@@ -165,7 +148,7 @@ class _LoansScreenState extends State<LoansScreen> {
           const SizedBox(height: 14),
           Row(children: [
             Expanded(child: _sumItem('别人欠我', _receivable, fg)),
-            Container(width: 1, height: 28, color: fg.withOpacity(0.2)),
+            Container(width: 1, height: 28, color: fg.withValues(alpha: 0.2)),
             Expanded(child: _sumItem('我欠别人', _payable, fg)),
           ]),
         ],
@@ -178,7 +161,7 @@ class _LoansScreenState extends State<LoansScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(color: fg.withOpacity(0.7), fontSize: 11.5)),
+            Text(label, style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11.5)),
             const SizedBox(height: 3),
             Text('¥${v.toStringAsFixed(2)}',
                 style: TextStyle(
@@ -259,7 +242,7 @@ class _LoansScreenState extends State<LoansScreen> {
   Widget _chip(String t, Color c) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(
-          color: c.withOpacity(0.13),
+          color: c.withValues(alpha: 0.13),
           borderRadius: BorderRadius.circular(5),
         ),
         child: Text(t,
@@ -788,7 +771,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
               child: const Text('取消')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: Text('删除', style: TextStyle(color: AppColors.expense))),
+              child: Text('删除', style: TextStyle(color: AppColors.danger))),
         ],
       ),
     );

@@ -27,7 +27,6 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
   double _expense = 0;
   List<_CatAgg> _byCategory = [];
   List<_MerchantAgg> _byMerchant = [];
-  List<_WeekAgg> _byWeek = [];
   List<_BudgetExec> _budgetExec = [];
 
   // AI 生成的文案 + 关键点
@@ -35,7 +34,6 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
   List<_Highlight> _highlights = [];
 
   late DateTime _periodStart;
-  late DateTime _periodEnd;
 
   @override
   void initState() {
@@ -65,7 +63,7 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
         end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
       }
       _periodStart = start;
-      _periodEnd = end;
+
       final user = await AuthService.getUser();
       _ledgerId = user?['currentLedgerId'] as String?;
       if (_ledgerId == null || _ledgerId!.isEmpty) {
@@ -206,7 +204,6 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
         _expense = expense;
         _byCategory = byCatList;
         _byMerchant = byMerchantList;
-        _byWeek = byWeekList;
         _budgetExec = budgetExec;
         _narrative = res['narrative'] as String?;
         _highlights = (res['highlights'] as List? ?? [])

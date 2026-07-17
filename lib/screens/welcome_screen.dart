@@ -39,7 +39,7 @@ class WelcomeScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.primary.withOpacity(0.14),
+                            color: AppColors.primary.withValues(alpha: 0.14),
                             blurRadius: 30,
                             offset: const Offset(0, 12),
                           ),
@@ -130,7 +130,7 @@ class WelcomeScreen extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.10),
+              color: AppColors.primary.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: AppColors.primary, size: 24),

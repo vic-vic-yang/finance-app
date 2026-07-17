@@ -18,14 +18,15 @@ class ThemeService {
   ThemeService._();
   static final ThemeService instance = ThemeService._();
 
-  /// 9 套主题（默认第 0 个：Aura Finance "Quiet Luxury"）
+  /// 10 套主题（默认第 0 个：Aura Finance "Quiet Luxury"）
   /// 索引存 SharedPreferences，**改顺序会让老用户主题错位**，慎重
   /// —— Aura 加在索引 0，把原有 8 套整体后移一位。已有用户的索引会跟着错位一次，
   ///    但因为整体观感升级了，这是有意为之；老用户首次启动只会看到"主题更新"
   ///    （除非他们改回偏好）。
   static const List<ThemePalette> palettes = [
     ThemePalette('Aura · 雅致', '🌿', Color(0xFF1B3022), isAura: true),
-    ThemePalette('无色', '⚫', Color(0xFF101828), isMono: true),
+    // 原「无色」槽位换成蔷薇粉（占同一索引，老用户不错位；选过无色的会看到粉）
+    ThemePalette('蔷薇粉', '🌸', Color(0xFFD9698E)),
     ThemePalette('星耀紫', '💜', Color(0xFF635BFF)),
     ThemePalette('莱姆绿', '🟢', Color(0xFF6ECC54)),
     ThemePalette('提香红', '🍅', Color(0xFFD34947)),
@@ -33,6 +34,7 @@ class ThemeService {
     ThemePalette('马尔斯绿', '🌲', Color(0xFF018B8D)),
     ThemePalette('克莱因蓝', '🌊', Color(0xFF002F7A)),
     ThemePalette('蒂芙尼蓝', '💎', Color(0xFF71E2D1)),
+    ThemePalette('暖阳橙', '🧡', Color(0xFFE07B39)),
   ];
 
   static const _kPaletteIndex = 'theme_palette_index';

@@ -5,12 +5,12 @@ import '../core/theme.dart';
 import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
+import '../models/category.dart';
 import '../models/account.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import 'add_bill_screen.dart';
-import 'profile_screen.dart';
 
 class BillsScreen extends StatefulWidget {
   /// true=作为底部 tab（左上头像、透明底）；false=二级页（返回箭头、bg 底）
@@ -33,8 +33,13 @@ class _BillsScreenState extends State<BillsScreen>
   bool   _loadingMore = false;
   bool   _hasMore = true;
   String? _filterType;
-  String? _filterUserId;
-  String? _filterAccountId;
+  final Set<String> _filterUserIds = {}; // 成员多选
+  final Set<String> _filterAccountIds = {}; // 账户多选
+  final Set<String> _filterCategoryIds = {}; // 分类多选
+  final Map<String, String> _catLabelById = {}; // id -> 「icon 名称」
+  List<Category> _allCategories = []; // 懒加载缓存（分类筛选用）
+  double? _minAmount; // 金额范围筛选（含边界）
+  double? _maxAmount;
   _DateMode _dateMode = _DateMode.all;
   DateTime _dateAnchor = DateTime.now();
   DateTime? _rangeStart;
@@ -172,10 +177,13 @@ class _BillsScreenState extends State<BillsScreen>
         page: 1,
         limit: 20,
         type: _filterType,
-        userId: _filterUserId,
-        accountId: _filterAccountId,
+        userIds: _filterUserIds.toList(),
+        accountIds: _filterAccountIds.toList(),
+        categoryIds: _filterCategoryIds.toList(),
         startDate: _startDate,
         endDate: _endDate,
+        minAmount: _minAmount,
+        maxAmount: _maxAmount,
       );
       if (!mounted) return;
       setState(() {
@@ -198,10 +206,13 @@ class _BillsScreenState extends State<BillsScreen>
         page: _page,
         limit: 20,
         type: _filterType,
-        userId: _filterUserId,
-        accountId: _filterAccountId,
+        userIds: _filterUserIds.toList(),
+        accountIds: _filterAccountIds.toList(),
+        categoryIds: _filterCategoryIds.toList(),
         startDate: _startDate,
         endDate: _endDate,
+        minAmount: _minAmount,
+        maxAmount: _maxAmount,
       );
       if (!mounted) return;
       final more = (res['bills'] as List? ?? []).map((b) => Bill.fromJson(b)).toList();
@@ -227,7 +238,7 @@ class _BillsScreenState extends State<BillsScreen>
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除', style: TextStyle(color: AppColors.expense)),
+            child: const Text('删除', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -244,19 +255,20 @@ class _BillsScreenState extends State<BillsScreen>
       backgroundColor: widget.isTab ? Colors.transparent : AppColors.bg,
       appBar: AuraAppBar(
         title: '账单',
-        avatarTap: widget.isTab
-            ? () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                )
-            : null,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: _filterEntryButton(),
+          ),
+        ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(100),
+          preferredSize: const Size.fromHeight(30),
           child: _filterBar(),
         ),
       ),
-      body: AuraBackground(
-        child: _loading
+      // tab 模式下 main_screen 已铺全局 AuraBackground，别再包一层（背景会错位）
+      body: _wrapBg(
+        _loading
             ? Center(child: CircularProgressIndicator(color: AppColors.primary))
             : RefreshIndicator(
                 color: AppColors.primary,
@@ -267,157 +279,149 @@ class _BillsScreenState extends State<BillsScreen>
     );
   }
 
+  Widget _wrapBg(Widget child) =>
+      widget.isTab ? child : AuraBackground(child: child);
+
   Widget _filterBar() {
+    final balance = _totalIncome - _totalExpense;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 40,
-            child: Row(children: [
-              if (_isSharedLedger) ...[
-                _userFilterButton(),
-                const SizedBox(width: 8),
-              ],
-              if (_accounts.isNotEmpty) ...[
-                _accountFilterButton(),
-                const SizedBox(width: 8),
-              ],
-              _dateFilterButton(),
-              const Spacer(),
-            ]),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 40,
-            child: Row(children: [
-              _typeFilterButton(),
-              const SizedBox(width: 8),
-              // 收入/支出金额：两行右对齐，长数值用 FittedBox 缩放，保证完整显示不省略
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (_totalIncome > 0)
-                        Text('+¥${_moneyFmtInt.format(_totalIncome)}',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.income,
-                                fontWeight: FontWeight.w600)),
-                      if (_totalExpense > 0)
-                        Text('-¥${_moneyFmtInt.format(_totalExpense)}',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.expense,
-                                fontWeight: FontWeight.w600)),
-                    ],
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(children: [
+            Text('收 +¥${_moneyFmtInt.format(_totalIncome)}',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.income,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(width: 14),
+            Text('支 -¥${_moneyFmtInt.format(_totalExpense)}',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.expense,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(width: 14),
+            Text('结余 ¥${_moneyFmtInt.format(balance)}',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.text2,
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCategoryFilterSheet() async {
+    // 懒加载分类（含系统 + 自建），只拉一次
+    if (_allCategories.isEmpty) {
+      try {
+        final res = await ApiService.getCategories();
+        _allCategories = (res['categories'] as List? ?? [])
+            .map((e) => Category.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        return;
+      }
+    }
+    if (!mounted) return;
+    final roots = _allCategories.where((c) => c.isRoot).toList();
+    final expenseRoots = roots.where((c) => c.type == 'expense').toList();
+    final incomeRoots = roots.where((c) => c.type == 'income').toList();
+
+    Widget sectionTitle(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+          child: Text(t,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text3)),
+        );
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSheet) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, controller) {
+          Widget row(Category c) {
+            final on = _filterCategoryIds.contains(c.id);
+            return InkWell(
+              onTap: () {
+                // 多选：再点已选的一项即取消；弹层不关，可继续选
+                setState(() {
+                  if (on) {
+                    _filterCategoryIds.remove(c.id);
+                  } else {
+                    _filterCategoryIds.add(c.id);
+                    _catLabelById[c.id] = '${c.displayIcon} ${c.name}';
+                  }
+                });
+                setSheet(() {});
+                _load(refresh: true);
+              },
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(children: [
+                  Text(c.displayIcon, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(c.name,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                on ? FontWeight.w600 : FontWeight.w500,
+                            color: on ? AppColors.primary : AppColors.text1)),
+                  ),
+                  if (on)
+                    Icon(Icons.check_rounded,
+                        size: 18, color: AppColors.primary),
+                ]),
+              ),
+            );
+          }
+
+          return ListView(
+            controller: controller,
+            padding: const EdgeInsets.only(top: 8, bottom: 24),
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dateFilterButton() {
-    final isAll = _dateMode == _DateMode.all;
-    return InkWell(
-      onTap: _openDateSheet,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: isAll ? AppColors.surface : AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: isAll ? AppColors.border : AppColors.primary),
+              // 与「类型」筛选联动：选了收入就只列收入分类，反之亦然
+              if (_filterType != 'income') ...[
+                sectionTitle('支出分类（含其下二级）'),
+                ...expenseRoots.map(row),
+              ],
+              if (_filterType != 'expense') ...[
+                sectionTitle('收入分类'),
+                ...incomeRoots.map(row),
+              ],
+            ],
+          );
+        },
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.calendar_today_rounded,
-              size: 13,
-              color: isAll ? AppColors.text2 : AppColors.primary),
-          const SizedBox(width: 6),
-          Text(_dateLabel,
-              style: TextStyle(
-                fontSize: 13,
-                color: isAll ? AppColors.text2 : AppColors.primary,
-                fontWeight:
-                    isAll ? FontWeight.normal : FontWeight.w600,
-              )),
-          if (_dateMode == _DateMode.range) ...[
-            const SizedBox(width: 6),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _dateMode = _DateMode.all;
-                  _rangeStart = null;
-                  _rangeEnd = null;
-                });
-                _load(refresh: true);
-              },
-              child: Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
-            ),
-          ] else if (!isAll) ...[
-            const SizedBox(width: 6),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (_dateMode == _DateMode.month) {
-                    _dateAnchor = DateTime(
-                        _dateAnchor.year, _dateAnchor.month - 1);
-                  } else {
-                    _dateAnchor = DateTime(_dateAnchor.year - 1, 1);
-                  }
-                });
-                _load(refresh: true);
-              },
-              child: Icon(Icons.chevron_left_rounded,
-                  size: 18, color: AppColors.primary),
-            ),
-            GestureDetector(
-              onTap: _canGoNextDate
-                  ? () {
-                      setState(() {
-                        if (_dateMode == _DateMode.month) {
-                          _dateAnchor = DateTime(
-                              _dateAnchor.year, _dateAnchor.month + 1);
-                        } else {
-                          _dateAnchor =
-                              DateTime(_dateAnchor.year + 1, 1);
-                        }
-                      });
-                      _load(refresh: true);
-                    }
-                  : null,
-              child: Icon(Icons.chevron_right_rounded,
-                  size: 18,
-                  color: _canGoNextDate
-                      ? AppColors.primary
-                      : AppColors.text3),
-            ),
-          ] else
-            Icon(Icons.arrow_drop_down_rounded,
-                size: 16, color: AppColors.text2),
-        ]),
       ),
     );
   }
 
-  bool get _canGoNextDate {
-    final now = DateTime.now();
-    if (_dateMode == _DateMode.year) return _dateAnchor.year < now.year;
-    if (_dateMode == _DateMode.month) {
-      return _dateAnchor.isBefore(DateTime(now.year, now.month));
-    }
-    return false;
-  }
 
   void _openDateSheet() {
     showModalBottomSheet(
@@ -437,8 +441,13 @@ class _BillsScreenState extends State<BillsScreen>
             onTap: () {
               Navigator.pop(context);
               setState(() {
-                _dateMode = mode;
-                _dateAnchor = anchor;
+                // 点已选的时间段 = 取消（回到全部时间）
+                if (selected && mode != _DateMode.all) {
+                  _dateMode = _DateMode.all;
+                } else {
+                  _dateMode = mode;
+                  _dateAnchor = anchor;
+                }
                 _rangeStart = null;
                 _rangeEnd = null;
               });
@@ -559,161 +568,14 @@ class _BillsScreenState extends State<BillsScreen>
     );
   }
 
-  Widget _userFilterButton() {
-    final selected = _filterUserId != null;
-    final currentName = selected
-        ? _members.firstWhere(
-            (m) => m.id == _filterUserId,
-            orElse: () => (id: '', name: '?'),
-          ).name
-        : null;
-    final label = currentName ?? '全员';
-    const allSentinel = '__all__';
-    return PopupMenuButton<String>(
-      tooltip: '按记账人筛选',
-      onSelected: (v) {
-        final next = v == allSentinel ? null : v;
-        if (_filterUserId == next) return;
-        setState(() {
-          _filterUserId = next;
-          _filterAccountId = null; // 切成员时重置账户（账户跟着成员变）
-        });
-        _load(refresh: true);
-      },
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.border),
-      ),
-      itemBuilder: (_) => [
-        PopupMenuItem<String>(
-          value: allSentinel,
-          child: Row(children: [
-            Icon(Icons.groups_rounded,
-                size: 18,
-                color: _filterUserId == null
-                    ? AppColors.primary
-                    : AppColors.text2),
-            const SizedBox(width: 10),
-            Text('全员',
-                style: TextStyle(
-                    color: _filterUserId == null
-                        ? AppColors.primary
-                        : AppColors.text1,
-                    fontWeight: _filterUserId == null
-                        ? FontWeight.w600
-                        : FontWeight.normal)),
-          ]),
-        ),
-        ..._members.map((m) => PopupMenuItem<String>(
-              value: m.id,
-              child: Row(children: [
-                CircleAvatar(
-                  radius: 9,
-                  backgroundColor: AppColors.primary,
-                  child: Text(
-                    m.name.isEmpty
-                        ? '?'
-                        : m.name.substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 9,
-                        color: AppColors.onPrimary,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(m.name,
-                    style: TextStyle(
-                        color: _filterUserId == m.id
-                            ? AppColors.primary
-                            : AppColors.text1,
-                        fontWeight: _filterUserId == m.id
-                            ? FontWeight.w600
-                            : FontWeight.normal)),
-              ]),
-            )),
-      ],
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryLight : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.person_outline_rounded,
-              size: 14,
-              color: selected ? AppColors.primary : AppColors.text2),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                fontSize: 13,
-                color: selected ? AppColors.primary : AppColors.text2,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.normal,
-              )),
-          const SizedBox(width: 2),
-          Icon(Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: selected ? AppColors.primary : AppColors.text2),
-        ]),
-      ),
-    );
-  }
-
-  Widget _accountFilterButton() {
-    final selected = _filterAccountId != null;
-    final cur = selected
-        ? _accounts.firstWhere(
-            (a) => a.id == _filterAccountId,
-            orElse: () => _accounts.first,
-          )
-        : null;
-    final label = cur?.name ?? '全部账户';
-    return InkWell(
-      onTap: _showAccountFilterSheet,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 130),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryLight : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.account_balance_wallet_outlined,
-              size: 14,
-              color: selected ? AppColors.primary : AppColors.text2),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: selected ? AppColors.primary : AppColors.text2,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                )),
-          ),
-          const SizedBox(width: 2),
-          Icon(Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: selected ? AppColors.primary : AppColors.text2),
-        ]),
-      ),
-    );
-  }
-
   /// 账户筛选弹窗：账本下全部账户，按 共享 / 各成员 分组
   Future<void> _showAccountFilterSheet() async {
-    // 账户跟着「记账人」筛选走：选了某成员就只列 ta 的账户 + 共享账户
-    final scoped = _filterUserId == null
+    // 账户跟着「记账人」筛选走：选了成员就只列他们的账户 + 共享账户
+    final scoped = _filterUserIds.isEmpty
         ? _accounts
         : _accounts
-            .where((a) => a.isShared || a.ownerId == _filterUserId)
+            .where((a) =>
+                a.isShared || _filterUserIds.contains(a.ownerId))
             .toList();
     final shared = scoped.where((a) => a.isShared).toList();
     final byOwner = <String, List<Account>>{};
@@ -764,14 +626,15 @@ class _BillsScreenState extends State<BillsScreen>
       );
     }
 
-    final picked = await showModalBottomSheet<String>(
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSheet) => SafeArea(
         child: ConstrainedBox(
           constraints:
               BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
@@ -799,25 +662,29 @@ class _BillsScreenState extends State<BillsScreen>
                   padding: const EdgeInsets.only(bottom: 12),
                   children: [
                     item(ctx,
-                        sel: _filterAccountId == null,
+                        sel: _filterAccountIds.isEmpty,
                         emoji: '📋',
                         name: '全部账户',
-                        onTap: () => Navigator.pop(ctx, '__all__')),
+                        onTap: () {
+                          setState(() => _filterAccountIds.clear());
+                          setSheet(() {});
+                          _load(refresh: true);
+                        }),
                     if (shared.isNotEmpty) head('共享账户'),
                     ...shared.map((a) => item(ctx,
-                        sel: _filterAccountId == a.id,
+                        sel: _filterAccountIds.contains(a.id),
                         emoji: a.typeEmoji,
                         name: a.name,
-                        onTap: () => Navigator.pop(ctx, a.id))),
+                        onTap: () => _toggleAccount(a.id, setSheet))),
                     for (final oid in ownerIds) ...[
                       head(byOwner[oid]!.first.balanceVisible
                           ? '我的账户'
                           : '${ownerName[oid]} 的账户'),
                       ...byOwner[oid]!.map((a) => item(ctx,
-                          sel: _filterAccountId == a.id,
+                          sel: _filterAccountIds.contains(a.id),
                           emoji: a.typeEmoji,
                           name: a.name,
-                          onTap: () => Navigator.pop(ctx, a.id))),
+                          onTap: () => _toggleAccount(a.id, setSheet))),
                     ],
                   ],
                 ),
@@ -825,75 +692,489 @@ class _BillsScreenState extends State<BillsScreen>
             ],
           ),
         ),
+        ),
       ),
     );
-    if (picked == null) return;
-    final next = picked == '__all__' ? null : picked;
-    if (_filterAccountId == next) return;
-    setState(() => _filterAccountId = next);
+  }
+
+  /// 账户多选 toggle：点已选=取消；弹层保持打开
+  void _toggleAccount(String id, void Function(void Function()) setSheet) {
+    setState(() {
+      if (_filterAccountIds.contains(id)) {
+        _filterAccountIds.remove(id);
+      } else {
+        _filterAccountIds.add(id);
+      }
+    });
+    setSheet(() {});
     _load(refresh: true);
   }
 
-  Widget _typeFilterButton() {
-    final selected = _filterType != null;
-    final label = _filterType == 'income'
-        ? '收入'
-        : _filterType == 'expense'
-            ? '支出'
-            : '全部类型';
-    return PopupMenuButton<String>(
-      tooltip: '按类型筛选',
-      onSelected: (v) {
-        final next = v == '__all__' ? null : v;
-        if (_filterType == next) return;
-        setState(() => _filterType = next);
-        _load(refresh: true);
-      },
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.border),
-      ),
-      itemBuilder: (_) => [
-        for (final e in const [
-          ('__all__', '全部类型', null),
-          ('income', '收入', 'income'),
-          ('expense', '支出', 'expense'),
-        ])
-          PopupMenuItem<String>(
-            value: e.$1,
-            child: Text(e.$2,
-                style: TextStyle(
-                    color: _filterType == e.$3
-                        ? AppColors.primary
-                        : AppColors.text1,
-                    fontWeight: _filterType == e.$3
-                        ? FontWeight.w600
-                        : FontWeight.normal)),
-          ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryLight : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border),
+  // ── 筛选抽屉 ────────────────────────────────────────────────
+
+  bool get _anyFilterActive =>
+      _filterUserIds.isNotEmpty ||
+      _filterAccountIds.isNotEmpty ||
+      _filterCategoryIds.isNotEmpty ||
+      _filterType != null ||
+      _dateMode != _DateMode.all ||
+      _minAmount != null ||
+      _maxAmount != null;
+
+  /// header 上的筛选入口：有生效筛选时右上角亮一个主色小圆点
+  Widget _filterEntryButton() => GestureDetector(
+        onTap: () async {
+          // 分类数据懒加载一次，进抽屉前备好
+          if (_allCategories.isEmpty) {
+            try {
+              final res = await ApiService.getCategories();
+              _allCategories = (res['categories'] as List? ?? [])
+                  .map((e) => Category.fromJson(e as Map<String, dynamic>))
+                  .toList();
+            } catch (_) {}
+          }
+          _openFilterPanel();
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Icon(Icons.tune_rounded, size: 22, color: AppColors.text1),
+            if (_anyFilterActive)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: AppColors.primary, shape: BoxShape.circle),
+                ),
+              ),
+          ]),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.filter_list_rounded,
-              size: 14,
-              color: selected ? AppColors.primary : AppColors.text2),
-          const SizedBox(width: 4),
-          Text(label,
+      );
+
+  String get _memberLabel {
+    if (_filterUserIds.isEmpty) return '全员';
+    if (_filterUserIds.length == 1) {
+      return _members
+          .firstWhere((m) => m.id == _filterUserIds.first,
+              orElse: () => (id: '', name: '成员'))
+          .name;
+    }
+    return '${_filterUserIds.length} 人';
+  }
+
+  String get _accountLabel {
+    if (_filterAccountIds.isEmpty) return '全部账户';
+    if (_filterAccountIds.length == 1) {
+      for (final a in _accounts) {
+        if (a.id == _filterAccountIds.first) return a.name;
+      }
+      return '1 个账户';
+    }
+    return '${_filterAccountIds.length} 个账户';
+  }
+
+  /// 分类筛选的展示：0=全部、1=具体名、多=N 个分类
+  String get _categoryFilterLabel {
+    if (_filterCategoryIds.isEmpty) return '全部分类';
+    if (_filterCategoryIds.length == 1) {
+      return _catLabelById[_filterCategoryIds.first] ?? '1 个分类';
+    }
+    return '${_filterCategoryIds.length} 个分类';
+  }
+
+  String get _typeLabel => _filterType == 'income'
+      ? '收入'
+      : _filterType == 'expense'
+          ? '支出'
+          : '全部';
+
+  String get _amountLabel {
+    if (_minAmount == null && _maxAmount == null) return '不限';
+    final min = _minAmount == null ? '' : '¥${_moneyFmtInt.format(_minAmount)}';
+    final max = _maxAmount == null ? '' : '¥${_moneyFmtInt.format(_maxAmount)}';
+    if (min.isEmpty) return '≤ $max';
+    if (max.isEmpty) return '≥ $min';
+    return '$min ~ $max';
+  }
+
+  /// 筛选面板：root navigator 上的右滑覆盖层——盖住底部导航（Drawer 做不到）
+  Future<void> _openFilterPanel() {
+    return showGeneralDialog(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      barrierLabel: '筛选',
+      barrierColor: Colors.black38,
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (_, anim, __, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+      pageBuilder: (dialogCtx, _, __) => Align(
+        alignment: Alignment.centerRight,
+        child: StatefulBuilder(
+          builder: (ctx, setLocal) {
+            // 每次点开子选择器后 setLocal 刷新面板上的当前值
+            Future<void> pick(Future<void> Function() fn) async {
+              await fn();
+              setLocal(() {});
+            }
+
+            return Material(
+              color: AppColors.surface,
+              shape: const RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.horizontal(left: Radius.circular(20)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                width: 300,
+                height: double.infinity,
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 12, 6),
+                        child: Row(children: [
+                          Text('筛选',
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.text1)),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: _anyFilterActive
+                                ? () {
+                                    setState(() {
+                                      _filterUserIds.clear();
+                                      _filterAccountIds.clear();
+                                      _filterCategoryIds.clear();
+                                      _filterType = null;
+                                      _dateMode = _DateMode.all;
+                                      _rangeStart = null;
+                                      _rangeEnd = null;
+                                      _minAmount = null;
+                                      _maxAmount = null;
+                                    });
+                                    setLocal(() {});
+                                    _load(refresh: true);
+                                  }
+                                : null,
+                            child: const Text('重置'),
+                          ),
+                        ]),
+                      ),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          children: [
+                            if (_isSharedLedger)
+                              _drawerRow(
+                                icon: Icons.person_outline_rounded,
+                                label: '成员',
+                                value: _memberLabel,
+                                active: _filterUserIds.isNotEmpty,
+                                onTap: () => pick(_pickMember),
+                              ),
+                            if (_accounts.isNotEmpty)
+                              _drawerRow(
+                                icon: Icons.account_balance_wallet_outlined,
+                                label: '账户',
+                                value: _accountLabel,
+                                active: _filterAccountIds.isNotEmpty,
+                                onTap: () => pick(_showAccountFilterSheet),
+                              ),
+                            _drawerRow(
+                              icon: Icons.sell_outlined,
+                              label: '分类',
+                              value: _categoryFilterLabel,
+                              active: _filterCategoryIds.isNotEmpty,
+                              onTap: () => pick(_showCategoryFilterSheet),
+                            ),
+                            _drawerRow(
+                              icon: Icons.calendar_today_rounded,
+                              label: '时间',
+                              value: _dateLabel,
+                              active: _dateMode != _DateMode.all,
+                              onTap: () => pick(() async => _openDateSheet()),
+                            ),
+                            _drawerRow(
+                              icon: Icons.swap_vert_rounded,
+                              label: '类型',
+                              value: _typeLabel,
+                              active: _filterType != null,
+                              onTap: () => pick(_pickType),
+                            ),
+                            _drawerRow(
+                              icon: Icons.payments_outlined,
+                              label: '金额范围',
+                              value: _amountLabel,
+                              active: _minAmount != null || _maxAmount != null,
+                              onTap: () => pick(_pickAmountRange),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(dialogCtx).pop(),
+                            child: const Text('完成'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+    required VoidCallback onTap,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          child: Row(children: [
+            Icon(icon,
+                size: 18, color: active ? AppColors.primary : AppColors.text3),
+            const SizedBox(width: 12),
+            Text(label,
+                style: TextStyle(fontSize: 14, color: AppColors.text1)),
+            const SizedBox(width: 12),
+            // 值列右对齐（Expanded+end），所有行的值和箭头贴齐右缘
+            Expanded(
+              child: Text(value,
+                  maxLines: 1,
+                  textAlign: TextAlign.end,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                      color: active ? AppColors.primary : AppColors.text3)),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, size: 17, color: AppColors.text3),
+          ]),
+        ),
+      );
+
+  /// 成员选择（抽屉行入口）：多选，点已选取消；「全员」清空
+  Future<void> _pickMember() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSheet) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 14),
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.groups_rounded,
+                  size: 20,
+                  color: _filterUserIds.isEmpty
+                      ? AppColors.primary
+                      : AppColors.text2),
+              title: Text('全员',
+                  style: TextStyle(
+                      color: _filterUserIds.isEmpty
+                          ? AppColors.primary
+                          : AppColors.text1,
+                      fontWeight: _filterUserIds.isEmpty
+                          ? FontWeight.w600
+                          : FontWeight.normal)),
+              onTap: () {
+                setState(() {
+                  _filterUserIds.clear();
+                });
+                setSheet(() {});
+                _load(refresh: true);
+              },
+            ),
+            for (final m in _members)
+              Builder(builder: (_) {
+                final on = _filterUserIds.contains(m.id);
+                return ListTile(
+                  dense: true,
+                  leading: Icon(Icons.person_outline_rounded,
+                      size: 20,
+                      color: on ? AppColors.primary : AppColors.text2),
+                  title: Text(m.name,
+                      style: TextStyle(
+                          color: on ? AppColors.primary : AppColors.text1,
+                          fontWeight:
+                              on ? FontWeight.w600 : FontWeight.normal)),
+                  trailing: on
+                      ? Icon(Icons.check_rounded,
+                          size: 18, color: AppColors.primary)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      if (on) {
+                        _filterUserIds.remove(m.id);
+                      } else {
+                        _filterUserIds.add(m.id);
+                      }
+                      // 账户跟着成员走：清掉不属于所选成员的非共享账户
+                      if (_filterUserIds.isNotEmpty) {
+                        final byId = {for (final a in _accounts) a.id: a};
+                        _filterAccountIds.removeWhere((id) {
+                          final a = byId[id];
+                          if (a == null) return true;
+                          if (a.isShared) return false;
+                          return !_filterUserIds.contains(a.ownerId);
+                        });
+                      }
+                    });
+                    setSheet(() {});
+                    _load(refresh: true);
+                  },
+                );
+              }),
+            const SizedBox(height: 10),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// 类型选择（抽屉行入口）
+  Future<void> _pickType() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 14),
+          for (final e in const [
+            (null, '全部'),
+            ('income', '收入'),
+            ('expense', '支出'),
+          ])
+            ListTile(
+              dense: true,
+              title: Text(e.$2,
+                  style: TextStyle(
+                      color: _filterType == e.$1
+                          ? AppColors.primary
+                          : AppColors.text1,
+                      fontWeight: _filterType == e.$1
+                          ? FontWeight.w600
+                          : FontWeight.normal)),
+              onTap: () {
+                Navigator.pop(ctx);
+                // 点已选的类型 = 取消（回到全部）
+                final next = _filterType == e.$1 ? null : e.$1;
+                if (_filterType == next) return;
+                setState(() {
+                  _filterType = next;
+                  // 联动：清掉与新类型冲突的已选分类（收入类型配支出分类无意义）
+                  if (next != null && _filterCategoryIds.isNotEmpty) {
+                    final byId = {for (final c in _allCategories) c.id: c};
+                    _filterCategoryIds.removeWhere(
+                        (id) => byId[id] != null && byId[id]!.type != next);
+                  }
+                });
+                _load(refresh: true);
+              },
+            ),
+          const SizedBox(height: 10),
+        ]),
+      ),
+    );
+  }
+
+  /// 金额范围（抽屉行入口）：最低/最高两个输入框
+  Future<void> _pickAmountRange() async {
+    final minCtrl = TextEditingController(
+        text: _minAmount == null ? '' : _minAmount!.toStringAsFixed(0));
+    final maxCtrl = TextEditingController(
+        text: _maxAmount == null ? '' : _maxAmount!.toStringAsFixed(0));
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 18,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('金额范围',
               style: TextStyle(
-                  fontSize: 13,
-                  color: selected ? AppColors.primary : AppColors.text2,
-                  fontWeight:
-                      selected ? FontWeight.w600 : FontWeight.normal)),
-          const SizedBox(width: 2),
-          Icon(Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: selected ? AppColors.primary : AppColors.text2),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.text1)),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: minCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: '最低', prefixText: '¥'),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Text('—'),
+            ),
+            Expanded(
+              child: TextField(
+                controller: maxCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: '最高', prefixText: '¥'),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                final min = double.tryParse(minCtrl.text.trim());
+                final max = double.tryParse(maxCtrl.text.trim());
+                Navigator.pop(ctx);
+                setState(() {
+                  _minAmount = (min != null && min > 0) ? min : null;
+                  _maxAmount = (max != null && max > 0) ? max : null;
+                });
+                _load(refresh: true);
+              },
+              child: const Text('应用'),
+            ),
+          ),
         ]),
       ),
     );
@@ -1002,15 +1283,13 @@ class _BillsScreenState extends State<BillsScreen>
     return DateFormat('yyyy年M月d日 EEEE', 'zh').format(date);
   }
 
-  Widget _empty() => Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Text('🧾', style: TextStyle(fontSize: 48)),
-          const SizedBox(height: 12),
-          Text('还没有账单', style: TextStyle(color: AppColors.text2, fontSize: 16)),
-          const SizedBox(height: 6),
-          Text('去首页点结余卡的「记一笔」开始',
-              style: TextStyle(color: AppColors.text2, fontSize: 13)),
-        ]),
+  Widget _empty() => const Center(
+        child: EmptyState(
+          emoji: '🧾',
+          title: '还没有账单',
+          hint: '去首页点结余卡的「记一笔」开始',
+          top: 0,
+        ),
       );
 }
 

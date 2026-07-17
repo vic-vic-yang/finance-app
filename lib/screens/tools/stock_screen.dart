@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../widgets/glass.dart';
@@ -117,33 +118,11 @@ class _StockScreenState extends State<StockScreen> {
   }
 
   Widget _empty({required bool holding}) => ListView(
-        children: [
-          const SizedBox(height: 100),
-          Center(
-            child: Column(
-              children: [
-                Text(holding ? '💼' : '📈',
-                    style: const TextStyle(fontSize: 44)),
-                const SizedBox(height: 12),
-                Text(holding ? '还没有持仓' : '还没有关注的股票',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.text1)),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(
-                    holding
-                        ? '查询一只股票进入详情，点「添加持仓」填买入价和数量，就会出现在这里，自动算盈亏。'
-                        : '点右下角「查询股票」，输入名称或代码（苹果 / AAPL / 600519）。查过的会进入「关注」，方便随时回看与更新分析。',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 13, color: AppColors.text2, height: 1.6),
-                  ),
-                ),
-              ],
-            ),
+        children: const [
+          EmptyState(
+            emoji: '💼',
+            title: '还没有持仓',
+            hint: '点右下角「添加持仓」，填买入价和数量，市值和每日盈亏都会自动算。',
           ),
         ],
       );
@@ -355,7 +334,121 @@ class _StockScreenState extends State<StockScreen> {
             ),
           ]),
           _pnlChart(),
+          const SizedBox(height: 12),
+          // AI 持仓解读：只做数据解读+风险提示（不含操作建议，合规安全线）
+          GestureDetector(
+            onTap: _showAiInsight,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border:
+                    Border.all(color: AppColors.primary.withValues(alpha: 0.45)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_awesome_rounded,
+                      size: 14, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text('AI 持仓解读',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary)),
+                ],
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// AI 持仓解读弹层：markdown 渲染 + 免责声明
+  void _showAiInsight() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.62,
+        maxChildSize: 0.9,
+        builder: (_, controller) => Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+              child: Row(children: [
+                Icon(Icons.auto_awesome_rounded,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text('AI 持仓解读',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text1)),
+              ]),
+            ),
+            Expanded(
+              child: FutureBuilder<Map<String, dynamic>>(
+                future: ApiService.getHoldingsInsight(),
+                builder: (_, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snap.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text('生成失败：${snap.error}',
+                            style: TextStyle(
+                                fontSize: 13, color: AppColors.text2)),
+                      ),
+                    );
+                  }
+                  final text = (snap.data?['text'] as String?) ?? '';
+                  return ListView(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    children: [
+                      MarkdownBody(
+                        data: text,
+                        selectable: true,
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                              fontSize: 13.5,
+                              height: 1.6,
+                              color: AppColors.text1),
+                          strong: const TextStyle(fontWeight: FontWeight.w700),
+                          listBullet: TextStyle(
+                              fontSize: 13.5, color: AppColors.text1),
+                          em: TextStyle(
+                              fontSize: 11.5,
+                              fontStyle: FontStyle.italic,
+                              color: AppColors.text3),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -495,7 +588,7 @@ class _StockScreenState extends State<StockScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.14),
+        color: c.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(r,

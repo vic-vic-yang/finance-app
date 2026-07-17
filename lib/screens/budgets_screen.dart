@@ -165,7 +165,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除', style: TextStyle(color: AppColors.expense)),
+            child: const Text('删除', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -297,7 +297,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
             Text(
               _period == 'MONTHLY' ? '本月总预算' : '今年总预算',
               style: TextStyle(
-                  color: AppColors.onPrimaryGradient.withOpacity(0.85),
+                  color: AppColors.onPrimaryGradient.withValues(alpha: 0.85),
                   fontSize: 13),
             ),
             const SizedBox(width: 6),
@@ -309,7 +309,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                 child: Icon(Icons.edit_outlined,
                     size: 14,
                     color:
-                        AppColors.onPrimaryGradient.withOpacity(0.85)),
+                        AppColors.onPrimaryGradient.withValues(alpha: 0.85)),
               ),
             ),
             const Spacer(),
@@ -318,7 +318,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: AppColors.onPrimaryGradient.withOpacity(0.18),
+                  color: AppColors.onPrimaryGradient.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -334,7 +334,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: AppColors.onPrimaryGradient.withOpacity(0.18),
+                  color: AppColors.onPrimaryGradient.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -372,7 +372,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               value: _totalProgress.clamp(0.0, 1.0),
               minHeight: 8,
               backgroundColor:
-                  AppColors.onPrimaryGradient.withOpacity(0.18),
+                  AppColors.onPrimaryGradient.withValues(alpha: 0.18),
               valueColor: AlwaysStoppedAnimation<Color>(
                   _isOverBudget ? AppColors.expense : Colors.white),
             ),
@@ -407,7 +407,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                     ? '手填总预算 · 分类合计 ${fmtMoneyInt(_sumCategoryBudgets)}'
                     : '总预算 = 各分类预算之和（点 ✎ 可手填）'),
             style: TextStyle(
-                color: AppColors.onPrimaryGradient.withOpacity(0.6),
+                color: AppColors.onPrimaryGradient.withValues(alpha: 0.6),
                 fontSize: 11),
           ),
           if (_isOverBudget) ...[
@@ -416,7 +416,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               padding: const EdgeInsets.symmetric(
                   horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.expense.withOpacity(0.15),
+                color: AppColors.expense.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -631,18 +631,16 @@ class _BudgetsScreenState extends State<BudgetsScreen>
     }
     if (_history.isEmpty ||
         _history.every((p) => p.totalBudget == 0 && p.totalSpent == 0)) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('📈', style: TextStyle(fontSize: 48)),
-            const SizedBox(height: 12),
-            Text('暂无历史数据',
-                style: TextStyle(color: AppColors.text2, fontSize: 15)),
-            const SizedBox(height: 6),
-            Text('设了分类预算并记账之后，这里会展示每期的执行情况',
-                style:
-                    TextStyle(color: AppColors.text3, fontSize: 12)),
+            EmptyState(
+              emoji: '📈',
+              title: '暂无历史数据',
+              hint: '设了分类预算并记账之后，这里会展示每期的执行情况',
+              top: 0,
+            ),
           ],
         ),
       );
@@ -793,7 +791,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: AppColors.primary.withOpacity(0.08),
+                      color: AppColors.primary.withValues(alpha: 0.08),
                     ),
                   ),
                   LineChartBarData(
@@ -1026,7 +1024,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.expense.withOpacity(0.12),
+                      color: AppColors.expense.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text('×${e.value.times}',
@@ -1080,7 +1078,7 @@ class _BudgetCard extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
@@ -1131,10 +1129,10 @@ class _BudgetCard extends StatelessWidget {
                     value: 'delete',
                     child: Row(children: [
                       Icon(Icons.delete_outline_rounded,
-                          size: 18, color: AppColors.expense),
+                          size: 18, color: AppColors.danger),
                       SizedBox(width: 10),
                       Text('删除',
-                          style: TextStyle(color: AppColors.expense)),
+                          style: TextStyle(color: AppColors.danger)),
                     ])),
               ],
               onSelected: (v) {
@@ -1149,7 +1147,7 @@ class _BudgetCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: pct,
               minHeight: 6,
-              backgroundColor: color.withOpacity(0.10),
+              backgroundColor: color.withValues(alpha: 0.10),
               valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),
@@ -1188,7 +1186,7 @@ class _BudgetCard extends StatelessWidget {
     final total = budget.members.fold<double>(0, (s, m) => s + m.spent);
     if (total <= 0) return const SizedBox.shrink();
     Color segColor(int i) =>
-        color.withOpacity((0.85 - i * 0.3).clamp(0.25, 0.85));
+        color.withValues(alpha: (0.85 - i * 0.3).clamp(0.25, 0.85));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

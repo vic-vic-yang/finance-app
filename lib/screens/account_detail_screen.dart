@@ -10,6 +10,7 @@ import '../models/account.dart';
 import '../models/bill.dart';
 import '../services/api_service.dart';
 import 'add_bill_screen.dart';
+import 'accounts_screen.dart';
 
 class AccountDetailScreen extends StatefulWidget {
   const AccountDetailScreen({super.key, required this.accountId});
@@ -206,7 +207,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除',
-                style: TextStyle(color: AppColors.expense)),
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -276,6 +277,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   noteCipher: cipher,
                   noteDekVer: dekVer,
                 );
+                if (!mounted || !sheetCtx.mounted) return;
                 if (Navigator.canPop(sheetCtx)) Navigator.pop(sheetCtx);
                 bumpRefresh();
                 await _loadAccount();
@@ -440,16 +442,14 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             ),
           ],
         ),
-        // 校准余额：普通账户 + 信用卡（信用卡按欠款校准）；负债余额由还款计划推导，不适用
-        actions: (a.type != 'DEBT')
-            ? [
-                IconButton(
-                  tooltip: '校准余额',
-                  icon: Icon(Icons.balance_rounded, color: AppColors.primary),
-                  onPressed: () => _openReconcileSheet(a),
-                ),
-              ]
-            : null,
+        // 右上=编辑账户（校准余额挪到 hero 卡金额旁）
+        actions: [
+          IconButton(
+            tooltip: '编辑账户',
+            icon: Icon(Icons.edit_outlined, color: AppColors.text1),
+            onPressed: () => showAccountEditSheet(context, a),
+          ),
+        ],
       ),
       body: AuraBackground(
         child: RefreshIndicator(
@@ -558,7 +558,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: fg.withOpacity(0.15),
+                  color: fg.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Center(
@@ -580,14 +580,14 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                     Row(children: [
                       Text(a.typeLabel,
                           style: TextStyle(
-                              color: fg.withOpacity(0.65), fontSize: 12)),
+                              color: fg.withValues(alpha: 0.65), fontSize: 12)),
                       if (a.isShared) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: fg.withOpacity(0.18),
+                            color: fg.withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text('共享',
@@ -605,21 +605,44 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             const SizedBox(height: 14),
             Text(label,
                 style:
-                    TextStyle(color: fg.withOpacity(0.7), fontSize: 12)),
+                    TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12)),
             const SizedBox(height: 2),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: Text(
-                    a.balanceVisible
-                        ? '¥${_moneyFmt.format(value)}'
-                        : '****',
-                    style: TextStyle(
-                        color: valueColor,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -1),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          a.balanceVisible
+                              ? '¥${_moneyFmt.format(value)}'
+                              : '****',
+                          style: TextStyle(
+                              color: valueColor,
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -1),
+                        ),
+                      ),
+                      // 校准余额：贴在金额旁（负债余额由还款计划推导，不适用）
+                      if (a.type != 'DEBT' && a.balanceVisible) ...[
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: () => _openReconcileSheet(a),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: fg.withValues(alpha: 0.18),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.balance_rounded,
+                                size: 14, color: fg),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 _miniSpark(a),
@@ -628,7 +651,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             if (a.balanceVisible && a.initialBalance != 0) ...[
               const SizedBox(height: 4),
               Text(_heroInitialText(a),
-                  style: TextStyle(color: fg.withOpacity(0.55), fontSize: 11)),
+                  style: TextStyle(color: fg.withValues(alpha: 0.55), fontSize: 11)),
             ],
             if (a.isCredit && (a.creditLimit ?? 0) > 0) ...[
               const SizedBox(height: 10),
@@ -655,7 +678,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         Row(children: [
           Text('已用额度',
               style:
-                  TextStyle(color: fg.withOpacity(0.7), fontSize: 11)),
+                  TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11)),
           const Spacer(),
           Text(
               '¥${_moneyFmtInt.format(used)} / ¥${_moneyFmtInt.format(limit)}',
@@ -670,7 +693,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           child: LinearProgressIndicator(
             value: ratio,
             minHeight: 6,
-            backgroundColor: fg.withOpacity(0.15),
+            backgroundColor: fg.withValues(alpha: 0.15),
             valueColor: AlwaysStoppedAnimation<Color>(
               ratio > 0.9
                   ? AppColors.expenseLight
@@ -683,7 +706,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         const SizedBox(height: 4),
         Text('使用率 ${(ratio * 100).toStringAsFixed(0)}%',
             style:
-                TextStyle(color: fg.withOpacity(0.55), fontSize: 10)),
+                TextStyle(color: fg.withValues(alpha: 0.55), fontSize: 10)),
       ],
     );
   }
@@ -700,7 +723,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         Row(children: [
           Text('还款进度',
               style:
-                  TextStyle(color: fg.withOpacity(0.7), fontSize: 11)),
+                  TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11)),
           const Spacer(),
           Text('$paid / $total 期',
               style: TextStyle(
@@ -714,14 +737,14 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           child: LinearProgressIndicator(
             value: ratio,
             minHeight: 6,
-            backgroundColor: fg.withOpacity(0.15),
+            backgroundColor: fg.withValues(alpha: 0.15),
             valueColor: AlwaysStoppedAnimation<Color>(fg),
           ),
         ),
         const SizedBox(height: 4),
         Text('已完成 ${(ratio * 100).toStringAsFixed(1)}%',
             style:
-                TextStyle(color: fg.withOpacity(0.55), fontSize: 10)),
+                TextStyle(color: fg.withValues(alpha: 0.55), fontSize: 10)),
       ],
     );
   }
@@ -1132,13 +1155,13 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(up ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                size: 13, color: fg.withOpacity(0.85)),
+                size: 13, color: fg.withValues(alpha: 0.85)),
             const SizedBox(width: 3),
             Text('${up ? '+' : '-'}¥${_moneyFmt.format(delta.abs())}',
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: fg.withOpacity(0.85))),
+                    color: fg.withValues(alpha: 0.85))),
           ]),
           const SizedBox(height: 3),
           SizedBox(
@@ -1169,8 +1192,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          fg.withOpacity(0.25),
-                          fg.withOpacity(0.0),
+                          fg.withValues(alpha: 0.25),
+                          fg.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -1551,20 +1574,17 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     return DateFormat('yyyy年M月d日 EEEE', 'zh').format(date);
   }
 
-  Widget _emptyBills() => Center(
+  Widget _emptyBills() => const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 24),
-            const Text('🧾', style: TextStyle(fontSize: 42)),
-            const SizedBox(height: 10),
-            Text('该账户还没有账单',
-                style:
-                    TextStyle(color: AppColors.text2, fontSize: 14)),
-            const SizedBox(height: 4),
-            Text('记账时选择该账户即可自动归档',
-                style:
-                    TextStyle(color: AppColors.text3, fontSize: 12)),
+            SizedBox(height: 8),
+            EmptyState(
+              emoji: '🧾',
+              title: '该账户还没有账单',
+              hint: '记账时选择该账户即可自动归档',
+              top: 16,
+            ),
           ],
         ),
       );

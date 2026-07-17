@@ -134,8 +134,8 @@ class _SplashScreenState extends State<_SplashScreen>
     final grad = AppColors.primaryGradient;
     final base = grad.first; // 深主题色（边缘）
     // 中心光晕：主题浅色再掺一点白，从中心向外逐渐过渡到 base
-    final glow = Color.alphaBlend(Colors.white.withOpacity(0.16), grad.last);
-    final edge = Color.alphaBlend(Colors.black.withOpacity(0.18), base);
+    final glow = Color.alphaBlend(Colors.white.withValues(alpha: 0.16), grad.last);
+    final edge = Color.alphaBlend(Colors.black.withValues(alpha: 0.18), base);
     final fg = AppColors.onPrimaryGradient;
 
     return Scaffold(
@@ -165,8 +165,8 @@ class _SplashScreenState extends State<_SplashScreen>
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            Colors.white.withOpacity(0.16),
-                            Colors.white.withOpacity(0.0),
+                            Colors.white.withValues(alpha: 0.16),
+                            Colors.white.withValues(alpha: 0.0),
                           ],
                         ),
                       ),
@@ -194,7 +194,7 @@ class _SplashScreenState extends State<_SplashScreen>
                           Text('智能财务管家',
                               style: TextStyle(
                                   fontSize: 13,
-                                  color: fg.withOpacity(0.6),
+                                  color: fg.withValues(alpha: 0.6),
                                   letterSpacing: 4)),
                         ],
                       ),
@@ -213,7 +213,7 @@ class _SplashScreenState extends State<_SplashScreen>
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 11,
-                          color: fg.withOpacity(0.4),
+                          color: fg.withValues(alpha: 0.4),
                           letterSpacing: 1.5)),
                 ),
               ),

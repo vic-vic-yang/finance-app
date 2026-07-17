@@ -246,7 +246,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     g.icon ?? '🎯',
                     style: TextStyle(
                       fontSize: 64,
-                      color: Colors.white.withOpacity(0.16),
+                      color: Colors.white.withValues(alpha: 0.16),
                     ),
                   ),
                 ),
@@ -258,7 +258,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.22),
+                        color: Colors.white.withValues(alpha: 0.22),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Row(mainAxisSize: MainAxisSize.min, children: [
@@ -357,7 +357,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(0xFF1B3022)
-                                    .withOpacity(0.22 * p),
+                                    .withValues(alpha: 0.22 * p),
                                 blurRadius: 12,
                                 offset: const Offset(0, 2),
                               ),
@@ -369,7 +369,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                               value: p,
                               minHeight: 8,
                               backgroundColor:
-                                  const Color(0xFF1B3022).withOpacity(0.12),
+                                  const Color(0xFF1B3022).withValues(alpha: 0.12),
                               valueColor: const AlwaysStoppedAnimation(
                                   Color(0xFF1B3022)),
                             ),
@@ -394,10 +394,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
       child: Container(
         height: 150,
         decoration: BoxDecoration(
-          color: AppColors.surface.withOpacity(0.4),
+          color: AppColors.surface.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
-            color: AppColors.primary.withOpacity(0.28),
+            color: AppColors.primary.withValues(alpha: 0.28),
             width: 1.4,
           ),
         ),
@@ -675,7 +675,7 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                           color: selected
                               ? Theme.of(context)
                                   .primaryColor
-                                  .withOpacity(0.12)
+                                  .withValues(alpha: 0.12)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
                           border: selected

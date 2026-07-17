@@ -512,7 +512,7 @@ class _AddBillScreenState extends State<AddBillScreen>
   /// （与 Aura「渐变软卡」语言一致，不改变各类型的颜色识别）
   List<Color> get _accentGradient {
     final c = _accentColor;
-    final darker = Color.alphaBlend(Colors.black.withOpacity(0.18), c);
+    final darker = Color.alphaBlend(Colors.black.withValues(alpha: 0.18), c);
     return [c, darker];
   }
 
@@ -604,7 +604,7 @@ class _AddBillScreenState extends State<AddBillScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.28),
+            color: color.withValues(alpha: 0.28),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -1135,7 +1135,7 @@ class _AddBillScreenState extends State<AddBillScreen>
                     boxShadow: sel
                         ? [
                             BoxShadow(
-                                color: color.withOpacity(0.3),
+                                color: color.withValues(alpha: 0.3),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2))
                           ]
@@ -1330,7 +1330,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       bg = color;
       fg = Colors.white;
     } else if (isOp || isBackspace) {
-      bg = color.withOpacity(0.08);
+      bg = color.withValues(alpha: 0.08);
       fg = color;
     } else {
       bg = AppColors.surface;
@@ -2310,7 +2310,7 @@ class AccountPickerSheet extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 5, vertical: 1),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.12),
+                          color: AppColors.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text('共享',

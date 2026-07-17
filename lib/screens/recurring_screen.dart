@@ -420,7 +420,7 @@ class _RecurringScreenState extends State<RecurringScreen>
   Widget _chip(String t, Color c) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: c.withOpacity(0.1),
+          color: c.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(t, style: TextStyle(fontSize: 11, color: c)),

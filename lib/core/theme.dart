@@ -21,6 +21,14 @@ import 'theme_service.dart';
 ///   - primary 只用在重要操作（FAB、按钮、选中态边框/文字）
 ///   - primaryLight 仅作"轻提示"用，能不用尽量不用
 ///   - income / expense / warning 是语义色，跟主题无关
+///
+/// 尺度约定（新代码请遵守，避免各写各的）：
+///   - 圆角层级：hero 大卡 18 · 标准卡 16 · 列表条/子卡 14 · chip/输入 10-12
+///     · 进度条/分段 2-4 · 胶囊按钮 20+
+///   - 严重度色：critical=income(哑红) · warning=warning(琥珀) · info=primary
+///     （洞察卡/CFO 用左侧 3px 色条表达，不用整卡彩底）
+///   - 空状态：统一用 widgets/glass.dart 的 EmptyState（圆底 emoji + 标题 + 引导）
+///   - 次要操作按钮：ghost 胶囊（描边小 pill），主操作才用实心 primary
 class AppColors {
   AppColors._();
 
@@ -47,8 +55,8 @@ class AppColors {
   static Color get primaryLight {
     final p = primary;
     return _isDark
-        ? Color.alphaBlend(p.withOpacity(0.16), const Color(0xFF1A1A1F))
-        : Color.alphaBlend(p.withOpacity(0.10), Colors.white);
+        ? Color.alphaBlend(p.withValues(alpha: 0.16), const Color(0xFF1A1A1F))
+        : Color.alphaBlend(p.withValues(alpha: 0.10), Colors.white);
   }
 
   /// Hero 卡片渐变
@@ -68,7 +76,7 @@ class AppColors {
           : const [Color(0xFF101828), Color(0xFF1F2937)];
     }
     final p = primary;
-    final lighter = Color.alphaBlend(Colors.white.withOpacity(0.28), p);
+    final lighter = Color.alphaBlend(Colors.white.withValues(alpha: 0.28), p);
     return [p, lighter];
   }
 
@@ -95,6 +103,8 @@ class AppColors {
       : const Color(0xFFE9F0E8);
   /// 提示 — 沙色
   static const Color warning      = Color(0xFFE0A86A);
+  /// 破坏性操作（删除/清空）的警示红 —— 与收支语义色解耦，别用 expense/income
+  static const Color danger       = Color(0xFFC65B4E);
   static Color get warningLight => _isDark
       ? const Color(0xFF2B2118)
       : const Color(0xFFF7ECD9);
@@ -147,7 +157,7 @@ class AppTheme {
     if (ThemeService.instance.isDark) return const [];
     return [
       BoxShadow(
-        color: const Color(0xFF1B3022).withOpacity(opacity),
+        color: const Color(0xFF1B3022).withValues(alpha: opacity),
         blurRadius: blur,
         offset: offset,
       ),
@@ -344,7 +354,7 @@ class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceAlt,
         selectedColor: isDark
-            ? AppColors.primary.withOpacity(0.20)
+            ? AppColors.primary.withValues(alpha: 0.20)
             : AppColors.primaryLight,
         labelStyle: GoogleFonts.outfit(
           fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.text1,

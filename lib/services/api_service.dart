@@ -23,7 +23,7 @@ class ApiService {
   // 本机调试 Web 时仍用 localhost
   static const String _publicHost = 'https://finance.equitick.top/api';
 
-  static final String baseUrl = kIsWeb
+  static const String baseUrl = kIsWeb
       ? 'http://localhost:3000/api'
       : _publicHost;
 
@@ -391,20 +391,33 @@ class ApiService {
     int limit = 20,
     String? type,
     String? categoryId,
+    List<String>? categoryIds,
     String? accountId,
+    List<String>? accountIds,
     String? userId,
+    List<String>? userIds,
     String? startDate,
     String? endDate,
+    double? minAmount,
+    double? maxAmount,
   }) =>
       _get('/bills', params: {
         'page': page.toString(),
         'limit': limit.toString(),
         if (type != null) 'type': type,
         if (categoryId != null) 'categoryId': categoryId,
+        if (categoryIds != null && categoryIds.isNotEmpty)
+          'categoryIds': categoryIds.join(','),
         if (accountId != null) 'accountId': accountId,
+        if (accountIds != null && accountIds.isNotEmpty)
+          'accountIds': accountIds.join(','),
         if (userId != null) 'userId': userId,
+        if (userIds != null && userIds.isNotEmpty)
+          'userIds': userIds.join(','),
         if (startDate != null) 'startDate': startDate,
         if (endDate != null) 'endDate': endDate,
+        if (minAmount != null) 'minAmount': minAmount.toString(),
+        if (maxAmount != null) 'maxAmount': maxAmount.toString(),
       });
 
   static Future<Map<String, dynamic>> createBill({
@@ -847,6 +860,10 @@ class ApiService {
   /// 某股票保存的完整分析 + 历史（含最新价与持仓）
   static Future<Map<String, dynamic>> getStockSaved(String symbol) =>
       _get('/tools/stocks/$symbol');
+
+  /// AI 持仓解读（数据解读+风险提示，无操作建议）。返回 { text, generatedAt }
+  static Future<Map<String, dynamic>> getHoldingsInsight({bool force = false}) =>
+      _get('/tools/holdings/insight', params: {if (force) 'force': '1'});
 
   /// 组合每日总盈亏曲线：返回 [{date, pnl}]（pnl 正=盈，负=亏）
   static Future<List<dynamic>> getHoldingPnlDaily({int days = 30}) async {

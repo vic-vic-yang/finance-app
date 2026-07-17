@@ -308,7 +308,7 @@ class _LoanCalculatorScreenState extends State<LoanCalculatorScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.income.withOpacity(0.12),
+        color: AppColors.income.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

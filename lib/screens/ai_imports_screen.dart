@@ -299,7 +299,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         setState(() {
           _applyingIds.remove(item.id);
           if (noNew) _noNewData.add(item.id);
-          if (failReason != null) _applyErr[item.id] = failReason!;
+          if (failReason != null) _applyErr[item.id] = failReason;
         });
       } else {
         _applyingIds.remove(item.id);
@@ -400,8 +400,11 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
   String _sourceOf(AiImport item) {
     final n = item.filename;
     if (n.contains('支付宝') || n.toLowerCase().contains('alipay')) return 'alipay';
-    if (n.contains('微信') || n.toLowerCase().contains('wechat') ||
-        n.toLowerCase().contains('weixin')) return 'wechat';
+    if (n.contains('微信') ||
+        n.toLowerCase().contains('wechat') ||
+        n.toLowerCase().contains('weixin')) {
+      return 'wechat';
+    }
     return 'manual';
   }
 
@@ -543,7 +546,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
           TextButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('删除',
-                  style: TextStyle(color: AppColors.expense))),
+                  style: TextStyle(color: AppColors.danger))),
         ],
       ),
     );
@@ -601,28 +604,12 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
     );
   }
 
-  Widget _empty() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('🤖', style: TextStyle(fontSize: 48)),
-            const SizedBox(height: 12),
-            Text('还没有 AI 导入记录',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text1)),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text(
-                '点右下角"上传文件"，把图片 / PDF / CSV / Excel 交给 AI 自动记账',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13, color: AppColors.text2, height: 1.5),
-              ),
-            ),
-          ],
+  Widget _empty() => const Center(
+        child: EmptyState(
+          emoji: '🤖',
+          title: '还没有 AI 导入记录',
+          hint: '点右下角「上传文件」，把图片 / PDF / CSV / Excel 交给 AI 自动记账',
+          top: 0,
         ),
       );
 

@@ -40,7 +40,7 @@ class AuraBackground extends StatelessWidget {
             left: -120,
             child: _Blob(
               size: 360,
-              color: primary.withOpacity(dark ? 0.18 : 0.10),
+              color: primary.withValues(alpha: dark ? 0.18 : 0.10),
             ),
           ),
           // 右上：苔绿/sage 光晕
@@ -49,7 +49,7 @@ class AuraBackground extends StatelessWidget {
             right: -110,
             child: _Blob(
               size: 300,
-              color: AppColors.income.withOpacity(dark ? 0.16 : 0.12),
+              color: AppColors.income.withValues(alpha: dark ? 0.16 : 0.12),
             ),
           ),
           // 右下：暖色微光
@@ -58,7 +58,7 @@ class AuraBackground extends StatelessWidget {
             right: -80,
             child: _Blob(
               size: 340,
-              color: AppColors.warning.withOpacity(dark ? 0.10 : 0.08),
+              color: AppColors.warning.withValues(alpha: dark ? 0.10 : 0.08),
             ),
           ),
           child,
@@ -82,7 +82,7 @@ class _Blob extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color, color.withOpacity(0)],
+          colors: [color, color.withValues(alpha: 0)],
         ),
       ),
     );
@@ -136,13 +136,13 @@ class GlassCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: fillBase.withOpacity(fillOpacity),
+            color: fillBase.withValues(alpha: fillOpacity),
             borderRadius: br,
             border: border
                 ? Border.all(
                     color: dark
-                        ? Colors.white.withOpacity(0.08)
-                        : Colors.white.withOpacity(0.55),
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.white.withValues(alpha: 0.55),
                     width: 1,
                   )
                 : null,
@@ -190,6 +190,7 @@ class GlassNavBar extends StatelessWidget {
     required this.icons,
     required this.activeIcons,
     required this.onTap,
+    this.onAdd,
   });
 
   final int index;
@@ -198,55 +199,110 @@ class GlassNavBar extends StatelessWidget {
   final List<IconData> activeIcons;
   final ValueChanged<int> onTap;
 
+  /// 中央「记一笔」按钮；null 则不显示
+  final VoidCallback? onAdd;
+
+  /// 加号上浮量：圆钮一半露在胶囊上沿之上（致敬最初的 centerDocked FAB）
+  static const double _addLift = 20;
+
   @override
   Widget build(BuildContext context) {
     final dark = _isDark;
     final br = BorderRadius.circular(30);
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: br,
-            // 阴影加强 + 深色描边，让胶囊从背景里"浮"出来、边界清晰
-            boxShadow: [
-              BoxShadow(
-                color: (dark ? Colors.black : const Color(0xFF1B3022))
-                    .withOpacity(dark ? 0.45 : 0.16),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-            ],
+    final pill = Container(
+      decoration: BoxDecoration(
+        borderRadius: br,
+        // 阴影加强 + 深色描边，让胶囊从背景里"浮"出来、边界清晰
+        boxShadow: [
+          BoxShadow(
+            color: (dark ? Colors.black : const Color(0xFF1B3022))
+                .withValues(alpha: dark ? 0.45 : 0.16),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
           ),
-          child: ClipRRect(
-            borderRadius: br,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-              child: Container(
-                height: 64,
-                decoration: BoxDecoration(
-                  // 接近实底，避免下方内容透上来影响可读性
-                  color: (dark ? const Color(0xFF1A1A1A) : Colors.white)
-                      .withOpacity(dark ? 0.90 : 0.95),
-                  borderRadius: br,
-                  border: Border.all(
-                    color: dark
-                        ? Colors.white.withOpacity(0.12)
-                        : AppColors.border.withOpacity(0.7),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: List.generate(labels.length, _item),
-                ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: br,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+          child: Container(
+            height: 64,
+            decoration: BoxDecoration(
+              // 接近实底，避免下方内容透上来影响可读性
+              color: (dark ? const Color(0xFF1A1A1A) : Colors.white)
+                  .withValues(alpha: dark ? 0.90 : 0.95),
+              borderRadius: br,
+              border: Border.all(
+                color: dark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : AppColors.border.withValues(alpha: 0.7),
+                width: 1,
               ),
+            ),
+            child: Row(
+              children: onAdd == null
+                  ? List.generate(labels.length, _item)
+                  : [
+                      // 前一半 tab + 中央留槽（加号浮在槽上方）+ 后一半 tab
+                      for (var i = 0; i < labels.length ~/ 2; i++) _item(i),
+                      const SizedBox(width: 66),
+                      for (var i = labels.length ~/ 2;
+                          i < labels.length;
+                          i++)
+                        _item(i),
+                    ],
             ),
           ),
         ),
       ),
     );
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+        child: onAdd == null
+            ? pill
+            // 预留上浮高度放进布局里（而不是负偏移溢出），保证加号整圆都可点
+            : SizedBox(
+                height: 64 + _addLift,
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    Positioned(left: 0, right: 0, bottom: 0, child: pill),
+                    Positioned(top: 0, child: _addButton()),
+                  ],
+                ),
+              ),
+      ),
+    );
   }
+
+  /// 中央记一笔：主色圆钮，半浮在胶囊上沿
+  Widget _addButton() => GestureDetector(
+        onTap: onAdd,
+        child: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            shape: BoxShape.circle,
+            // 白描边把圆钮从胶囊上"切"出来，浮起感更干净
+            border: Border.all(
+                color: _isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(Icons.add_rounded, size: 26, color: AppColors.onPrimary),
+        ),
+      );
 
   Widget _item(int i) {
     final selected = index == i;
@@ -265,7 +321,7 @@ class GlassNavBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
                 color: selected
-                    ? AppColors.primary.withOpacity(_isDark ? 0.18 : 0.10)
+                    ? AppColors.primary.withValues(alpha: _isDark ? 0.18 : 0.10)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -343,7 +399,7 @@ class _ProfileAvatarState extends State<ProfileAvatar> {
             end: Alignment.bottomRight,
           ),
           border: Border.all(
-            color: Colors.white.withOpacity(_isDark ? 0.14 : 0.65),
+            color: Colors.white.withValues(alpha: _isDark ? 0.14 : 0.65),
             width: 1.5,
           ),
           boxShadow: AppTheme.ambientShadow(
@@ -408,9 +464,9 @@ class AiButton extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: (_isDark ? Colors.white : Colors.white)
-                      .withOpacity(_isDark ? 0.08 : 0.72),
+                      .withValues(alpha: _isDark ? 0.08 : 0.72),
                   border: Border.all(
-                    color: Colors.white.withOpacity(_isDark ? 0.12 : 0.6),
+                    color: Colors.white.withValues(alpha: _isDark ? 0.12 : 0.6),
                     width: 1,
                   ),
                 ),
@@ -475,7 +531,8 @@ class AuraAppBar extends StatelessWidget implements PreferredSizeWidget {
               ? Text(
                   title!,
                   style: TextStyle(
-                    color: AppColors.primary,
+                    // 页面标题用正文黑（text1），主题色只留给重点操作
+                    color: AppColors.text1,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4,
@@ -499,7 +556,7 @@ class _GlassHeaderBg extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          color: AppColors.bg.withOpacity(dark ? 0.60 : 0.72),
+          color: AppColors.bg.withValues(alpha: dark ? 0.60 : 0.72),
         ),
       ),
     );
@@ -549,7 +606,8 @@ class AuraSliverAppBar extends StatelessWidget {
               ? Text(
                   title!,
                   style: TextStyle(
-                    color: AppColors.primary,
+                    // 页面标题用正文黑（text1），主题色只留给重点操作
+                    color: AppColors.text1,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4,
@@ -558,6 +616,67 @@ class AuraSliverAppBar extends StatelessWidget {
               : null),
       actions: actions,
       flexibleSpace: const _GlassHeaderBg(),
+    );
+  }
+}
+
+/// 统一空状态：emoji 落在柔和圆底上 + 标题 + 一句引导。
+/// 全 App 的"还没有 XX"都用它，保证同一字阶与间距（简约的一致性）。
+class EmptyState extends StatelessWidget {
+  const EmptyState({
+    super.key,
+    required this.emoji,
+    required this.title,
+    this.hint,
+    this.action,
+    this.top = 72,
+  });
+
+  final String emoji;
+  final String title;
+  final String? hint;
+  /// 可选的后续动作（如"添加账户"按钮）
+  final Widget? action;
+  final double top;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: top, left: 44, right: 44),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 30)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text1)),
+          if (hint != null) ...[
+            const SizedBox(height: 6),
+            Text(hint!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12.5, color: AppColors.text2, height: 1.5)),
+          ],
+          if (action != null) ...[
+            const SizedBox(height: 22),
+            action!,
+          ],
+        ],
+      ),
     );
   }
 }

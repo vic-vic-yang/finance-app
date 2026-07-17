@@ -22,6 +22,7 @@ import 'ledgers_screen.dart';
 import 'category_manage_screen.dart';
 import 'budgets_screen.dart';
 import 'tools/tools_screen.dart';
+import 'tools/stock_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -118,10 +119,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      // 作为底部 tab：背景由 main_screen 的全局 AuraBackground 提供，
+      // 这里透明即可，别再自铺（否则四个 tab 的 header 背景不一致）
+      backgroundColor: Colors.transparent,
       appBar: const AuraAppBar(title: '我的'),
-      body: AuraBackground(
-        child: ListView(
+      body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
           _userCard(),
@@ -159,7 +161,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           const SizedBox(height: 20),
           _logoutBtn(),
         ],
-        ),
       ),
     );
   }
@@ -190,7 +191,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: fg.withOpacity(0.18),
+              color: fg.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Center(
@@ -222,13 +223,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(width: 6),
                   Icon(Icons.edit_outlined,
-                      color: fg.withOpacity(0.8), size: 16),
+                      color: fg.withValues(alpha: 0.8), size: 16),
                 ]),
                 const SizedBox(height: 4),
                 Text(
                   hasNick ? '@$_username' : '点击设置昵称',
                   style: TextStyle(
-                      color: fg.withOpacity(0.7), fontSize: 12),
+                      color: fg.withValues(alpha: 0.7), fontSize: 12),
                 ),
               ],
             ),
@@ -406,15 +407,19 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// 财务功能宫格（4 列）：比一长条列表更好扫读、更省屏
   Widget _funcGrid() {
     final items = <(String, String, VoidCallback)>[
+      // 行1：基础管理
       ('💳', '账户', () => _push(const AccountsScreen())),
       ('🏷️', '分类', () => _push(const CategoryManageScreen())),
       ('📅', '预算', () => _push(BudgetsScreen())),
-      ('🤝', '借贷', () => _push(const LoansScreen())),
-      ('🤖', 'AI 导入', () => _push(const AiImportsScreen())),
-      ('📋', '订阅', () => _push(const RecurringScreen())),
       ('🎯', '目标', () => _push(const GoalsScreen())),
-      ('📊', '月报', () => _push(const MonthlyReportScreen())),
-      ('💬', 'AI 助手', _openChat),
+      // 行2：AI / 自动化
+      ('📥', 'AI 导入', () => _push(const AiImportsScreen())),
+      ('📋', 'AI 订阅', () => _push(const RecurringScreen())),
+      ('📊', 'AI 月报', () => _push(const MonthlyReportScreen())),
+      ('🤖', 'AI 助手', _openChat),
+      // 行3：其他
+      ('💼', '持仓', () => _push(const StockScreen())),
+      ('🤝', '借贷', () => _push(const LoansScreen())),
       ('🧰', '工具箱', () => _push(const ToolsScreen())),
     ];
     return GlassCard(
@@ -659,7 +664,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             newPassword: newP,
                             sm2PrivByPwd: newPrivByPwd,
                           );
-                          if (!mounted) return;
+                          if (!ctx.mounted || !mounted) return;
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context)
                               .showSnackBar(const SnackBar(
@@ -708,9 +713,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       applicationName: '司库',
       applicationVersion: 'v$kAppVersion',
-      applicationIcon: const Padding(
-        padding: EdgeInsets.all(8),
-        child: Text('💰', style: TextStyle(fontSize: 32)),
+      // 用真实 App 图标（许可页顶部也用它），不再用 💰 emoji
+      applicationIcon: Padding(
+        padding: const EdgeInsets.all(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.asset('assets/icon/app_icon.png',
+              width: 48, height: 48, fit: BoxFit.cover),
+        ),
       ),
       children: const [
         Text('个人财务管理，让每一笔钱都心中有数。'),
@@ -853,7 +863,7 @@ class _ColorTile extends StatelessWidget {
                   ? null
                   : [
                       BoxShadow(
-                        color: palette.seed.withOpacity(0.35),
+                        color: palette.seed.withValues(alpha: 0.35),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),

@@ -297,7 +297,7 @@ class _LedgersScreenState extends State<LedgersScreen> {
               child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除', style: TextStyle(color: AppColors.expense)),
+            child: const Text('删除', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -531,11 +531,11 @@ class _LedgersScreenState extends State<LedgersScreen> {
                           value: 'delete',
                           child: Row(children: [
                             Icon(Icons.delete_outline_rounded,
-                                size: 18, color: AppColors.expense),
+                                size: 18, color: AppColors.danger),
                             SizedBox(width: 10),
                             Text('删除账本',
                                 style:
-                                    TextStyle(color: AppColors.expense)),
+                                    TextStyle(color: AppColors.danger)),
                           ]),
                         ),
                       if (!l.isPersonal && !l.isOwner)

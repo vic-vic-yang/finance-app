@@ -158,7 +158,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
                 style: TextStyle(
                     color: childCount > 0
                         ? AppColors.text3
-                        : AppColors.expense)),
+                        : AppColors.danger)),
           ),
         ],
       ),
@@ -191,9 +191,13 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : roots.isEmpty
                       ? Center(
-                          child: Text(
-                              '还没有${_type == 'expense' ? '支出' : '收入'}分类',
-                              style: TextStyle(color: AppColors.text3)),
+                          child: EmptyState(
+                            emoji: '🏷️',
+                            title:
+                                '还没有${_type == 'expense' ? '支出' : '收入'}分类',
+                            hint: '点右下角「新建分类」创建第一个',
+                            top: 0,
+                          ),
                         )
                       : ReorderableListView.builder(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
@@ -232,7 +236,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
               boxShadow: on
                   ? [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 6,
                           offset: const Offset(0, 2))
                     ]
@@ -393,7 +397,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
         const PopupMenuItem(value: 'edit', child: Text('编辑')),
         PopupMenuItem(
             value: 'delete',
-            child: Text('删除', style: TextStyle(color: AppColors.expense))),
+            child: Text('删除', style: TextStyle(color: AppColors.danger))),
       ],
     );
   }
