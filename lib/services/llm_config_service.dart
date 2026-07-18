@@ -41,7 +41,7 @@ const kLlmPresets = <LlmProviderPreset>[
   LlmProviderPreset('qwen', '通义千问', 'https://dashscope.aliyuncs.com/compatible-mode',
       'qwen-plus', 'qwen-vl-plus', 'bailian.console.aliyun.com'),
   LlmProviderPreset('kimi', 'Kimi', 'https://api.moonshot.cn',
-      'moonshot-v1-8k', 'moonshot-v1-8k-vision-preview', 'platform.moonshot.cn'),
+      'kimi-k3', 'kimi-k3', 'platform.moonshot.cn'),
   LlmProviderPreset('glm', '智谱 GLM', 'https://open.bigmodel.cn/api/paas',
       'glm-4-flash', 'glm-4v-flash', 'open.bigmodel.cn'),
   LlmProviderPreset('custom', '自定义（OpenAI 兼容）', '', '', '', ''),

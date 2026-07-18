@@ -70,14 +70,41 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  /// 厂家切换时暂存当前输入（纯内存，不落盘）
+  final _tempInputs = <String, _TempInput>{};
+
   void _applyPreset(String id) {
+    // 离开当前厂家前暂存输入
+    _tempInputs[_provider] = _TempInput(
+      baseUrl: _baseUrlCtrl.text,
+      apiKey: _keyCtrl.text,
+      model: _modelCtrl.text,
+      vision: _visionCtrl.text,
+    );
     setState(() {
       _provider = id;
       final p = _preset;
-      if (p.baseUrl.isNotEmpty) _baseUrlCtrl.text = p.baseUrl;
-      if (p.defaultModel.isNotEmpty) _modelCtrl.text = p.defaultModel;
-      _visionCtrl.text = p.defaultVisionModel;
+      // 切到的厂家如果有之前填过的输入，恢复之；否则用预设值
+      final prev = _tempInputs[id];
+      if (prev != null && prev.baseUrl.isNotEmpty) {
+        _baseUrlCtrl.text = prev.baseUrl;
+        _keyCtrl.text = prev.apiKey;
+        _modelCtrl.text = prev.model;
+        _visionCtrl.text = prev.vision;
+      } else {
+        if (p.baseUrl.isNotEmpty) _baseUrlCtrl.text = p.baseUrl;
+        if (p.defaultModel.isNotEmpty) _modelCtrl.text = p.defaultModel;
+        _visionCtrl.text = p.defaultVisionModel;
+      }
     });
+  }
+
+  class _TempInput {
+    final String baseUrl;
+    final String apiKey;
+    final String model;
+    final String vision;
+    const _TempInput({required this.baseUrl, required this.apiKey, required this.model, required this.vision});
   }
 
   Future<void> _save() async {
