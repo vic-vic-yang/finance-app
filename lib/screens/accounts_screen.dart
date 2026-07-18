@@ -2043,7 +2043,9 @@ class _AccountSheetState extends State<_AccountSheet> {
                         fontWeight: FontWeight.w500,
                         color: AppColors.text2)),
                 const SizedBox(height: 8),
-                Row(children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   Expanded(
                     child: _visibilityTile(
                       icon: Icons.lock_outline_rounded,
@@ -2174,8 +2176,7 @@ class _AccountSheetState extends State<_AccountSheet> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return IntrinsicHeight(
-      child: GestureDetector(
+    return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -2213,7 +2214,6 @@ class _AccountSheetState extends State<_AccountSheet> {
           ),
         ]),
       ),
-    ),
     );
   }
 }
