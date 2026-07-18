@@ -40,7 +40,7 @@ const kLlmPresets = <LlmProviderPreset>[
       'deepseek-chat', '', 'platform.deepseek.com'),
   LlmProviderPreset('qwen', '通义千问', 'https://dashscope.aliyuncs.com/compatible-mode',
       'qwen-plus', 'qwen-vl-plus', 'bailian.console.aliyun.com'),
-  LlmProviderPreset('kimi', 'Kimi', 'https://api.moonshot.cn',
+  LlmProviderPreset('kimi', 'Kimi', 'https://api.moonshot.ai/v1',
       'kimi-k3', 'kimi-k3', 'platform.moonshot.cn'),
   LlmProviderPreset('glm', '智谱 GLM', 'https://open.bigmodel.cn/api/paas',
       'glm-4-flash', 'glm-4v-flash', 'open.bigmodel.cn'),
