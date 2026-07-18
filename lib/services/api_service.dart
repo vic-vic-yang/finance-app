@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'auth_service.dart';
+import 'llm_config_service.dart';
 
 /// 后端返回非 2xx 状态码时抛出，让既有的 try/catch 能感知真实错误
 /// （此前 helper 只是 jsonDecode(body)，4xx/5xx 错误体被当成功返回）
@@ -70,6 +71,8 @@ class ApiService {
     return {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
+      // BYOK：配置了个人模型则所有请求带上（服务端仅 AI 接口读取，过手不落库）
+      ...LlmConfigService.instance.headers(),
     };
   }
 
@@ -163,6 +166,34 @@ class ApiService {
     } catch (_) {/* 静默 */}
   }
 
+  // ── BYOK：账本共享 LLM 配置 ────────────────────────────────
+  /// 当前账本共享配置视图（不含 Key）+ 是否允许用服务端默认
+  static Future<Map<String, dynamic>> getLlmConfig() => _get('/ai/llm-config');
+
+  /// 保存/更新账本共享配置（apiKey 不传=保留服务器上现有的）
+  static Future<Map<String, dynamic>> putLlmConfig({
+    required String provider,
+    required String baseUrl,
+    required String modelId,
+    String? visionModelId,
+    String? apiKey,
+  }) =>
+      _post('/ai/llm-config', {
+        'provider': provider,
+        'baseUrl': baseUrl,
+        'modelId': modelId,
+        if (visionModelId != null) 'visionModelId': visionModelId,
+        if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
+      });
+
+  static Future<Map<String, dynamic>> deleteLlmConfig() =>
+      _delete('/ai/llm-config');
+
+  /// 按 ①个人 ②账本 ③服务端 顺序解析并发一条微请求验证连通性
+  static Future<Map<String, dynamic>> testLlm() =>
+      _post('/ai/llm-config/test', {},
+          timeout: const Duration(seconds: 30));
+
   // ── Auth ──────────────────────────────────────────────────
   static Future<Map<String, dynamic>> login(
       String username, String password) async {
@@ -239,6 +270,9 @@ class ApiService {
 
   /// 拉取当前用户资料（含昵称）
   static Future<Map<String, dynamic>> getMe() => _get('/auth/me');
+
+  /// VIP 状态查询
+  static Future<Map<String, dynamic>> getVipStatus() => _get('/auth/vip-status');
 
   /// 修改昵称（传空串/null 都视为清除）
   static Future<Map<String, dynamic>> updateProfile({String? nickname}) async {

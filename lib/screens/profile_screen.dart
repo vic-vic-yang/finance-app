@@ -23,6 +23,7 @@ import 'category_manage_screen.dart';
 import 'budgets_screen.dart';
 import 'tools/tools_screen.dart';
 import 'tools/stock_screen.dart';
+import 'ai_model_config_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -141,6 +142,12 @@ class _ProfileScreenState extends State<ProfileScreen>
             onTap: () => _showThemeSheet(),
           ),
           _tile(
+            icon: '🧠',
+            title: 'AI 模型',
+            subtitle: '自带 Key（BYOK）· 可共享给账本成员',
+            onTap: () => _push(const AiModelConfigScreen()),
+          ),
+          _tile(
             icon: '🔑',
             title: '修改密码',
             subtitle: '换一个登录密码',
@@ -222,6 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(width: 6),
+                  _vipBadge(),
                   Icon(Icons.edit_outlined,
                       color: fg.withValues(alpha: 0.8), size: 16),
                 ]),
@@ -705,6 +713,31 @@ class _ProfileScreenState extends State<ProfileScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => const _ThemePickerSheet(),
+    );
+  }
+
+  Widget _vipBadge() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ApiService.getVipStatus().catchError((_) => <String, dynamic>{'isVip': false}),
+      builder: (_, snap) {
+        final data = snap.data;
+        if (data == null || data['isVip'] != true) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.amber.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.6), width: 0.5),
+          ),
+          child: const Text('VIP',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
+        );
+      },
     );
   }
 

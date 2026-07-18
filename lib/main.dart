@@ -13,6 +13,7 @@ import 'screens/main_screen.dart';
 import 'screens/add_bill_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'services/api_service.dart';
+import 'services/llm_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/pending_dek_resolver.dart';
 
@@ -51,6 +52,7 @@ void main() async {
 
   // 在用户慢慢输账号密码这几秒里，先把 TLS 连接建好，省 1.5+ 秒 TLS 握手
   unawaited(ApiService.prewarm());
+  await LlmConfigService.instance.load();
   runApp(const FinanceApp());
 }
 
