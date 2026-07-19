@@ -199,10 +199,17 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
 
       final bills = <Map<String, dynamic>>[];
       final transfers = <Map<String, dynamic>>[];
+      // LLM 偶尔把"转账汇款"判成收支 direction——分类/摘要有明显转账字样时，
+      // 也尝试匹配对端账户，匹配上就按账户间转账处理（如 招行→中信）
+      final transferish = RegExp(r'转账汇款|行内转账|汇入汇款|跨行转出|网上转账');
       for (final d in drafts) {
         final fromId = resolveAccount(d);
         if (fromId.isEmpty) continue;
-        if (d.direction == 'transfer') {
+        final looksTransfer = d.direction == 'transfer' ||
+            d.categoryName.startsWith('转账') ||
+            transferish.hasMatch(d.note) ||
+            transferish.hasMatch(d.counterparty ?? '');
+        if (looksTransfer) {
           final toId = resolveTransferDest(d);
           if (toId != null && toId != fromId) {
             // 账户间转账（如 储蓄卡 → 花呗 还款）→ 拆成一支一收两条账单，

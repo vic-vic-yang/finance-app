@@ -105,11 +105,12 @@ class ApiService {
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
+    Map<String, String>? extraHeaders,
   }) async {
     final res = await _client
         .post(
           Uri.parse('$baseUrl$path'),
-          headers: await _headers(),
+          headers: {...await _headers(), ...?extraHeaders},
           body: jsonEncode(body),
         )
         .timeout(timeout ?? _kRequestTimeout);
@@ -189,10 +190,13 @@ class ApiService {
   static Future<Map<String, dynamic>> deleteLlmConfig() =>
       _delete('/ai/llm-config');
 
-  /// 按 ①个人 ②账本 ③服务端 顺序解析并发一条微请求验证连通性
-  static Future<Map<String, dynamic>> testLlm() =>
+  /// 按 ①个人 ②账本 ③服务端 顺序解析并发一条微请求验证连通性。
+  /// 传 [override] 则用这套（未保存的）表单配置直接测，不影响已保存的配置。
+  static Future<Map<String, dynamic>> testLlm({PersonalLlmConfig? override}) =>
       _post('/ai/llm-config/test', {},
-          timeout: const Duration(seconds: 30));
+          timeout: const Duration(seconds: 30),
+          extraHeaders:
+              override != null ? LlmConfigService.headersOf(override) : null);
 
   // ── Auth ──────────────────────────────────────────────────
   static Future<Map<String, dynamic>> login(
@@ -473,6 +477,8 @@ class ApiService {
         'date': (date ?? DateTime.now()).toIso8601String(),
       });
 
+  static Future<Map<String, dynamic>> getBill(String id) => _get('/bills/$id');
+
   static Future<Map<String, dynamic>> updateBill(
     String id, {
     required String type,
@@ -482,6 +488,8 @@ class ApiService {
     required String noteCipher,
     required int noteDekVer,
     DateTime? date,
+    /// 仅编辑转账账单(isTransfer)时传：配对腿的目标账户 id
+    String? toAccountId,
   }) =>
       _put('/bills/$id', {
         'type': type,
@@ -491,6 +499,7 @@ class ApiService {
         'noteCipher': noteCipher,
         'noteDekVer': noteDekVer,
         'date': (date ?? DateTime.now()).toIso8601String(),
+        if (toAccountId != null) 'toAccountId': toAccountId,
       });
 
   static Future<Map<String, dynamic>> deleteBill(String id) =>

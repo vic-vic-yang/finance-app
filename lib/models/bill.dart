@@ -96,6 +96,8 @@ class Bill {
   final int noteDekVer;
   final DateTime date;
   final BillUser? user; // 记账人
+  /// 是否转账/借贷类账单（不计收支）；编辑时用于隐藏"转为借贷/转账"入口
+  final bool isTransfer;
 
   Bill({
     required this.id,
@@ -108,6 +110,7 @@ class Bill {
     this.noteDekVer = 1,
     required this.date,
     this.user,
+    this.isTransfer = false,
   });
 
   factory Bill.fromJson(Map<String, dynamic> json) => Bill(
@@ -124,6 +127,7 @@ class Bill {
         user: json['user'] is Map<String, dynamic>
             ? BillUser.fromJson(json['user'] as Map<String, dynamic>)
             : null,
+        isTransfer: json['isTransfer'] as bool? ?? false,
       );
 
   /// 客户端用账本 DEK 解出来的备注

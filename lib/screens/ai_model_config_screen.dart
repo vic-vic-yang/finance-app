@@ -3,10 +3,11 @@ import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../services/llm_config_service.dart';
 import '../widgets/glass.dart';
+import 'ai_model_edit_screen.dart';
 
 /// AI 模型配置（BYOK）：
-/// - Key 默认只存本机（服务端过手不落库）
-/// - 打开「共享给账本成员」则加密上传，账本所有成员共用
+/// - 可保存多套厂商配置，点选一套为「使用中」，Key 只存本机（服务端过手不落库）
+/// - 打开「共享给账本成员」则把使用中的配置加密上传，账本所有成员共用
 class AiModelConfigScreen extends StatefulWidget {
   const AiModelConfigScreen({super.key});
 
@@ -15,25 +16,18 @@ class AiModelConfigScreen extends StatefulWidget {
 }
 
 class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
-  String _provider = 'deepseek';
-  final _baseUrlCtrl = TextEditingController();
-  final _keyCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  final _visionCtrl = TextEditingController();
-  bool _keyVisible = false;
-  bool _share = false;
   bool _loading = true;
-  bool _busy = false;
-  String? _testResult; // 连通性测试结果文案
-  bool? _testOk;
+  bool _shareBusy = false;
+
+  List<PersonalLlmConfig> _configs = [];
+  String? _activeId;
 
   // 账本共享现状（他人配置时展示）
   Map<String, dynamic>? _sharedInfo;
-  bool _serverDefaultAllowed = false;
+  bool _serverDefaultAllowed = false; // 是否 VIP（可用服务端默认模型）
 
-  LlmProviderPreset get _preset =>
-      kLlmPresets.firstWhere((p) => p.id == _provider,
-          orElse: () => kLlmPresets.last);
+  bool get _sharing => _sharedInfo != null &&
+      (_sharedInfo!['isOwner'] as bool? ?? false);
 
   @override
   void initState() {
@@ -41,139 +35,120 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _baseUrlCtrl.dispose();
-    _keyCtrl.dispose();
-    _modelCtrl.dispose();
-    _visionCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
-    // 本机个人配置
-    final cfg = await LlmConfigService.instance.loadRaw();
-    _provider = cfg.provider;
-    _baseUrlCtrl.text = cfg.baseUrl;
-    _keyCtrl.text = cfg.apiKey;
-    _modelCtrl.text = cfg.model;
-    _visionCtrl.text = cfg.visionModel;
-    // 账本共享现状
+    await LlmConfigService.instance.load();
+    _configs = LlmConfigService.instance.configs;
+    _activeId = LlmConfigService.instance.active?.id;
     try {
       final res = await ApiService.getLlmConfig();
       _sharedInfo = res['shared'] as Map<String, dynamic>?;
       _serverDefaultAllowed = res['serverDefaultAllowed'] as bool? ?? false;
-      if (_sharedInfo != null && (_sharedInfo!['isOwner'] as bool? ?? false)) {
-        _share = true;
-      }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
 
-  /// 厂家切换时暂存当前输入（纯内存，不落盘）
-  final _tempInputs = <String, Map<String, String>>{};
-
-  void _applyPreset(String id) {
-    // 离开当前厂家前暂存输入
-    _tempInputs[_provider] = {
-      'baseUrl': _baseUrlCtrl.text,
-      'apiKey': _keyCtrl.text,
-      'model': _modelCtrl.text,
-      'vision': _visionCtrl.text,
-    };
-    setState(() {
-      _provider = id;
-      final p = _preset;
-      // 切到的厂家如果有之前填过的输入，恢复之；否则用预设值
-      final prev = _tempInputs[id];
-      if (prev != null && (prev['baseUrl'] ?? '').isNotEmpty) {
-        _baseUrlCtrl.text = prev['baseUrl'] ?? '';
-        _keyCtrl.text = prev['apiKey'] ?? '';
-        _modelCtrl.text = prev['model'] ?? '';
-        _visionCtrl.text = prev['vision'] ?? '';
-      } else {
-        if (p.baseUrl.isNotEmpty) _baseUrlCtrl.text = p.baseUrl;
-        if (p.defaultModel.isNotEmpty) _modelCtrl.text = p.defaultModel;
-        _visionCtrl.text = p.defaultVisionModel;
-      }
-    });
+  PersonalLlmConfig? get _active {
+    for (final c in _configs) {
+      if (c.id == _activeId) return c;
+    }
+    return null;
   }
 
-  Future<void> _save() async {
-    final cfg = PersonalLlmConfig(
-      provider: _provider,
-      baseUrl: _baseUrlCtrl.text.trim(),
-      apiKey: _keyCtrl.text.trim(),
-      model: _modelCtrl.text.trim(),
-      visionModel: _visionCtrl.text.trim(),
+  /// 把「使用中的」配置推为账本共享（共享开启期间切换/增删配置后保持同步）
+  Future<void> _pushShare(PersonalLlmConfig cfg) async {
+    await ApiService.putLlmConfig(
+      provider: cfg.provider,
+      baseUrl: cfg.baseUrl,
+      modelId: cfg.model,
+      visionModelId: cfg.visionModel.isEmpty ? null : cfg.visionModel,
+      apiKey: cfg.apiKey,
     );
-    if (!cfg.isComplete) {
-      _toast('Base URL / API Key / 模型 都要填');
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await LlmConfigService.instance.save(cfg);
-      if (_share) {
-        await ApiService.putLlmConfig(
-          provider: cfg.provider,
-          baseUrl: cfg.baseUrl,
-          modelId: cfg.model,
-          visionModelId:
-              cfg.visionModel.isEmpty ? null : cfg.visionModel,
-          apiKey: cfg.apiKey,
-        );
-      } else if (_sharedInfo != null &&
-          (_sharedInfo!['isOwner'] as bool? ?? false)) {
-        // 之前共享过、现在关掉 → 删除服务器上的
-        await ApiService.deleteLlmConfig();
+  }
+
+  Future<void> _switchActive(PersonalLlmConfig cfg) async {
+    if (cfg.id == _activeId) return;
+    await LlmConfigService.instance.setActive(cfg.id);
+    setState(() => _activeId = cfg.id);
+    if (_sharing) {
+      try {
+        await _pushShare(cfg);
+        await _load();
+        _toast('共享配置已同步为「${cfg.displayName}」');
+      } catch (e) {
+        _toast('共享同步失败：$e');
       }
-      _toast(_share ? '已保存并共享给账本成员' : '已保存（仅本机）');
+    }
+  }
+
+  Future<void> _addOrEdit([PersonalLlmConfig? existing]) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => AiModelEditScreen(existing: existing)),
+    );
+    if (changed == true) {
+      await _load();
+      // 编辑了使用中的配置且共享开启 → 同步到服务器
+      if (_sharing && _active != null) {
+        try {
+          await _pushShare(_active!);
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> _remove(PersonalLlmConfig cfg) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这套配置？'),
+        content: Text('「${cfg.displayName} · ${cfg.model}」将从本机移除。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await LlmConfigService.instance.remove(cfg.id);
+    await _load();
+    // 共享开启时：还有配置则同步新的使用中配置；没有了则关闭服务器共享
+    if (_sharing) {
+      try {
+        if (_active != null) {
+          await _pushShare(_active!);
+        } else {
+          await ApiService.deleteLlmConfig();
+        }
+        await _load();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _toggleShare(bool v) async {
+    setState(() => _shareBusy = true);
+    try {
+      if (v) {
+        final cfg = _active;
+        if (cfg == null) {
+          _toast('请先添加并选中一套模型配置');
+          return;
+        }
+        await _pushShare(cfg);
+        _toast('已共享给账本成员');
+      } else {
+        await ApiService.deleteLlmConfig();
+        _toast('已关闭共享并删除服务器上的 Key');
+      }
       await _load();
     } catch (e) {
-      _toast('保存失败：$e');
+      _toast('操作失败：$e');
     } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _test() async {
-    setState(() {
-      _busy = true;
-      _testResult = null;
-      _testOk = null;
-    });
-    try {
-      // 先把当前表单存到本机，让请求头带上最新配置再测
-      final cfg = PersonalLlmConfig(
-        provider: _provider,
-        baseUrl: _baseUrlCtrl.text.trim(),
-        apiKey: _keyCtrl.text.trim(),
-        model: _modelCtrl.text.trim(),
-        visionModel: _visionCtrl.text.trim(),
-      );
-      if (cfg.isComplete) await LlmConfigService.instance.save(cfg);
-      final res = await ApiService.testLlm();
-      final ok = res['ok'] as bool? ?? false;
-      final src = switch (res['source'] as String? ?? '') {
-        'personal' => '个人配置',
-        'ledger' => '账本共享',
-        'server' => '服务端默认',
-        _ => '',
-      };
-      setState(() {
-        _testOk = ok;
-        _testResult = ok
-            ? '连接成功 ✓ （$src · ${res['model']}）'
-            : '连接失败：${res['error'] ?? '未知错误'}';
-      });
-    } catch (e) {
-      setState(() {
-        _testOk = false;
-        _testResult = '测试失败：$e';
-      });
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _shareBusy = false);
     }
   }
 
@@ -199,21 +174,9 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
                   if (_sharedInfo != null &&
                       !(_sharedInfo!['isOwner'] as bool? ?? false))
                     _sharedByOthersBanner(),
-                  _formCard(),
+                  _modelListCard(),
                   const SizedBox(height: 14),
                   _shareCard(),
-                  const SizedBox(height: 14),
-                  _actions(),
-                  if (_testResult != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_testResult!,
-                        style: TextStyle(
-                            fontSize: 13,
-                            height: 1.5,
-                            color: _testOk == true
-                                ? AppColors.expense
-                                : AppColors.danger)),
-                  ],
                   const SizedBox(height: 18),
                   _privacyNote(),
                 ],
@@ -230,14 +193,13 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(children: [
-          Icon(Icons.diversity_3_rounded,
-              size: 18, color: AppColors.primary),
+          Icon(Icons.diversity_3_rounded, size: 18, color: AppColors.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               '当前账本已由 @${_sharedInfo!['ownerName']} 提供共享模型'
               '（${_sharedInfo!['modelId']}），你无需配置即可使用 AI；'
-              '也可以在下方配置自己的进行覆盖。',
+              '也可以添加自己的进行覆盖。',
               style: TextStyle(
                   fontSize: 12.5, color: AppColors.text2, height: 1.5),
             ),
@@ -245,82 +207,102 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
         ]),
       );
 
-  Widget _formCard() => GlassCard(
+  Widget _modelListCard() => GlassCard(
         radius: 16,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('模型配置',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text1)),
-            const SizedBox(height: 12),
-            // 服务商预设
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final p in kLlmPresets)
-                  ChoiceChip(
-                    label: Text(p.name,
-                        style: const TextStyle(fontSize: 12.5)),
-                    selected: _provider == p.id,
-                    onSelected: (_) => _applyPreset(p.id),
-                  ),
-              ],
-            ),
-            if (_preset.keyUrl.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text('Key 申请：${_preset.keyUrl}',
-                  style: TextStyle(fontSize: 11, color: AppColors.text3)),
-            ],
-            const SizedBox(height: 12),
-            TextField(
-              controller: _baseUrlCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Base URL',
-                hintText: 'https://api.deepseek.com',
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _keyCtrl,
-              obscureText: !_keyVisible,
-              decoration: InputDecoration(
-                labelText: 'API Key',
-                hintText: 'sk-…',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                      _keyVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      size: 18),
-                  onPressed: () =>
-                      setState(() => _keyVisible = !_keyVisible),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(children: [
+                Expanded(
+                  child: Text('我的模型',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text1)),
                 ),
-              ),
+                Text('点选切换使用中',
+                    style: TextStyle(fontSize: 11, color: AppColors.text3)),
+              ]),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _modelCtrl,
-              decoration: const InputDecoration(
-                labelText: '文本模型',
-                hintText: 'deepseek-chat',
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _visionCtrl,
-              decoration: const InputDecoration(
-                labelText: '视觉模型（可选，图片导入用）',
-                hintText: '留空则不支持截图/图片导入',
+            const SizedBox(height: 6),
+            if (_configs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 14, 8, 14),
+                child: Text('还没有配置，点击下方「添加新模型」开始',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.text3)),
+              )
+            else
+              for (final c in _configs) _configTile(c),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _addOrEdit(),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('添加新模型'),
+                ),
               ),
             ),
           ],
         ),
       );
+
+  Widget _configTile(PersonalLlmConfig c) {
+    final isActive = c.id == _activeId;
+    return ListTile(
+      contentPadding: const EdgeInsets.only(left: 4, right: 0),
+      onTap: () => _switchActive(c),
+      leading: Icon(
+        isActive ? Icons.radio_button_checked : Icons.radio_button_off,
+        size: 20,
+        color: isActive ? AppColors.primary : AppColors.text3,
+      ),
+      title: Row(children: [
+        Flexible(
+          child: Text(c.displayName,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text1)),
+        ),
+        if (isActive) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('使用中',
+                style: TextStyle(fontSize: 10, color: AppColors.primary)),
+          ),
+        ],
+      ]),
+      subtitle: Text(
+        c.visionModel.isEmpty ? c.model : '${c.model} ｜ 视觉 ${c.visionModel}',
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 11.5, color: AppColors.text3),
+      ),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          icon: Icon(Icons.edit_outlined, size: 18, color: AppColors.text2),
+          onPressed: () => _addOrEdit(c),
+          tooltip: '编辑',
+        ),
+        IconButton(
+          icon: Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+          onPressed: () => _remove(c),
+          tooltip: '删除',
+        ),
+      ]),
+    );
+  }
 
   Widget _shareCard() => GlassCard(
         radius: 16,
@@ -333,32 +315,15 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
                   fontWeight: FontWeight.w600,
                   color: AppColors.text1)),
           subtitle: Text(
-            _share
-                ? 'Key 将加密上传到服务器，本账本所有成员的 AI 功能共用这份配置'
+            _sharing
+                ? '使用中的配置已加密上传到服务器，本账本所有成员的 AI 功能共用；切换使用中会同步更新'
                 : 'Key 仅保存在本机，只有你自己能用',
-            style: TextStyle(
-                fontSize: 11.5, color: AppColors.text3, height: 1.4),
+            style: TextStyle(fontSize: 11.5, color: AppColors.text3, height: 1.4),
           ),
-          value: _share,
-          onChanged: (v) => setState(() => _share = v),
+          value: _sharing,
+          onChanged: _shareBusy ? null : _toggleShare,
         ),
       );
-
-  Widget _actions() => Row(children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: _busy ? null : _test,
-            child: Text(_busy ? '请稍候…' : '测试连接'),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: ElevatedButton(
-            onPressed: _busy ? null : _save,
-            child: const Text('保存'),
-          ),
-        ),
-      ]);
 
   Widget _privacyNote() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,7 +333,7 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
             '· 仅本机模式：Key 存手机安全存储，随请求转发给服务器直连模型，服务器不存储。\n'
             '· 共享模式：Key 用服务端密钥 AES-256-GCM 加密后落库，供账本成员共用；'
             '关闭共享即从服务器删除。\n'
-            '${_serverDefaultAllowed ? '· 你在服务端白名单内：不配置也可使用内置默认模型。' : '· 未配置时 AI 功能不可用（记账等核心功能不受影响）。'}',
+            '${_serverDefaultAllowed ? '· 你是 VIP：不配置也可使用服务端内置模型。' : '· 未配置时 AI 功能不可用（记账等核心功能不受影响）。'}',
             style: TextStyle(fontSize: 11.5, color: AppColors.text3, height: 1.7),
           ),
           const SizedBox(height: 12),
@@ -406,8 +371,8 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
                           color: AppColors.text1)),
                   if (days > 0)
                     Text('剩余 $days 天',
-                        style: TextStyle(
-                            fontSize: 11.5, color: AppColors.text2)),
+                        style:
+                            TextStyle(fontSize: 11.5, color: AppColors.text2)),
                 ],
               ),
             ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
@@ -7,6 +9,8 @@ import '../models/bill.dart';
 import '../models/category.dart';
 import '../crypto/key_chain.dart';
 import '../services/api_service.dart';
+import '../services/funding_matcher.dart';
+import '../services/payment_method_map.dart';
 import '../services/recents_service.dart';
 import 'ai_imports_screen.dart';
 
@@ -58,6 +62,10 @@ class _AddBillScreenState extends State<AddBillScreen>
 
 
   bool get _isTransfer => _type == 'transfer';
+
+  /// 编辑的是一条转账/借贷类账单（isTransfer）：类型/金额/账户锁定，
+  /// 仅允许修改分类/备注/日期（改金额会把转账对的余额搞坏，后端也有护栏）
+  bool get _editingTransfer => widget.bill?.isTransfer ?? false;
 
   // 总金额（所有 terms + 当前未提交的 amountStr）
   double get _total {
@@ -114,13 +122,17 @@ class _AddBillScreenState extends State<AddBillScreen>
   void initState() {
     super.initState();
     final b = widget.bill;
-    _type = b?.type ?? 'expense';
-    // 编辑模式不允许切到"转账"（转账目前不支持编辑）
-    final tabLen = widget.bill != null ? 2 : 3;
+    _type = (b?.isTransfer ?? false) ? 'transfer' : (b?.type ?? 'expense');
+    // 一律三个 tab：编辑普通账单切到"转账"页保存 = 转为账户间转账（convert）；
+    // 编辑转账账单停在转账页（不可切回收支）
     _tabCtrl = TabController(
-        length: tabLen,
+        length: 3,
         vsync: this,
-        initialIndex: _type == 'expense' ? 0 : 1);
+        initialIndex: _type == 'expense'
+            ? 0
+            : _type == 'income'
+                ? 1
+                : 2);
     _tabCtrl.addListener(_onTabChanged);
 
     if (b != null) {
@@ -133,6 +145,12 @@ class _AddBillScreenState extends State<AddBillScreen>
 
   void _onTabChanged() {
     if (_tabCtrl.indexIsChanging) return;
+    // 转账账单不允许切成收/支（会孤儿化配对腿）；弹回转账页
+    if (_editingTransfer && _tabCtrl.index != 2) {
+      _tabCtrl.index = 2;
+      _toast('转账账单不可改为收/支；如需变更请删除后重新记账');
+      return;
+    }
     setState(() {
       switch (_tabCtrl.index) {
         case 0:
@@ -256,9 +274,42 @@ class _AddBillScreenState extends State<AddBillScreen>
         _selectedAccount = initAcc;
         _loaded = true;
       });
+
+      // 编辑转账账单：拉详情拿配对腿账户，预填「转出/转入」
+      if (b != null && b.isTransfer) {
+        unawaited(_prefillTransferPair(b, everyAccount));
+      }
     } catch (_) {
       if (mounted) setState(() => _loaded = true);
     }
+  }
+
+  /// 编辑转账：把「转出」预填为支出腿账户、「转入」为收入腿账户
+  Future<void> _prefillTransferPair(Bill b, List<Account> accounts) async {
+    try {
+      final res = await ApiService.getBill(b.id);
+      final pairAccId = res['bill']?['transferPairAccountId'] as String?;
+      if (!mounted || pairAccId == null) return;
+      Account? pair;
+      for (final a in accounts) {
+        if (a.id == pairAccId) {
+          pair = a;
+          break;
+        }
+      }
+      if (pair == null) return;
+      setState(() {
+        if (b.type == 'expense') {
+          // 编辑的是转出腿：from = 本腿账户，to = 配对腿账户
+          _toAccount = pair;
+        } else {
+          // 编辑的是转入腿：from = 配对腿账户，to = 本腿账户
+          final billAcc = _selectedAccount;
+          _selectedAccount = pair;
+          _toAccount = billAcc;
+        }
+      });
+    } catch (_) {/* 预填失败则由用户手选 */}
   }
 
   List<Category> get _filteredCategories =>
@@ -389,6 +440,45 @@ class _AddBillScreenState extends State<AddBillScreen>
           toCipher = KeyChain.instance.encryptText(
               ledgerId: lid, plain: '转账·转入 ← ${_selectedAccount!.name}$tail');
         }
+
+        // ── 编辑已有转账：双腿同步更新（金额/账户/日期），余额由后端重算 ──
+        if (_editingTransfer) {
+          final b = widget.bill!;
+          final isOutLeg = b.type == 'expense';
+          final cipher = KeyChain.instance.hasDek(b.ledgerId)
+              ? KeyChain.instance
+                  .encryptText(ledgerId: b.ledgerId, plain: userNote)
+              : (fromCipher ?? '');
+          await ApiService.updateBill(
+            b.id,
+            type: b.type,
+            amount: amount,
+            categoryId: b.category.id,
+            // accountId = 被编辑这条腿的账户；toAccountId = 配对腿的账户
+            accountId: isOutLeg ? _selectedAccount!.id : _toAccount!.id,
+            noteCipher: cipher,
+            noteDekVer: KeyChain.instance.dekVersionOf(b.ledgerId) ?? 1,
+            date: _date,
+            toAccountId: isOutLeg ? _toAccount!.id : _selectedAccount!.id,
+          );
+          if (!mounted) return;
+          bumpRefresh();
+          Navigator.pop(context, true);
+          return;
+        }
+
+        // ── 编辑普通账单 → 切到转账页保存 = 转为账户间转账（原地重分类，不重复扣钱）──
+        if (widget.bill != null) {
+          final b = widget.bill!;
+          await ApiService.convertBill(b.id,
+              to: 'transfer', toAccountId: _toAccount!.id);
+          await _learnTransferMapping(b, _toAccount!);
+          if (!mounted) return;
+          bumpRefresh();
+          Navigator.pop(context, true);
+          return;
+        }
+
         await ApiService.transfer(
           fromAccountId: _selectedAccount!.id,
           toAccountId: _toAccount!.id,
@@ -401,8 +491,8 @@ class _AddBillScreenState extends State<AddBillScreen>
         if (!mounted) return;
         bumpRefresh();
         Navigator.pop(context, true);
-      } catch (_) {
-        _toast('转账失败，请重试');
+      } catch (e) {
+        _toast(e is ApiException ? e.message : '转账失败，请重试');
       } finally {
         if (mounted) setState(() => _saving = false);
       }
@@ -632,33 +722,10 @@ class _AddBillScreenState extends State<AddBillScreen>
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (widget.bill != null)
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_horiz_rounded,
-                        color: Colors.white70, size: 22),
-                    tooltip: '更多',
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    onSelected: (v) {
-                      if (v == 'loan') _convertToLoan();
-                      if (v == 'transfer') _convertToTransfer();
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                          value: 'loan',
-                          child: Row(children: [
-                            Text('🤝  '),
-                            Text('转为借贷'),
-                          ])),
-                      PopupMenuItem(
-                          value: 'transfer',
-                          child: Row(children: [
-                            Text('🔄  '),
-                            Text('转为账户间转账'),
-                          ])),
-                    ],
-                  )
-                else
+                // 新建账单 → AI 导入入口；编辑普通账单 →「转为借贷」菜单
+                // （转为账户间转账直接切"转账" tab 保存即可；转账账单无菜单）。
+                // 无右侧按钮时补一个等宽占位，保持标题视觉居中
+                if (widget.bill == null)
                   IconButton(
                     icon: const Icon(Icons.file_upload_rounded,
                         color: Colors.white70, size: 22),
@@ -670,7 +737,28 @@ class _AddBillScreenState extends State<AddBillScreen>
                             builder: (_) => const AiImportsScreen()),
                       );
                     },
-                  ),
+                  )
+                else if (!widget.bill!.isTransfer)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_horiz_rounded,
+                        color: Colors.white70, size: 22),
+                    tooltip: '更多',
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    onSelected: (v) {
+                      if (v == 'loan') _convertToLoan();
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'loan',
+                          child: Row(children: [
+                            Text('🤝  '),
+                            Text('转为借贷'),
+                          ])),
+                    ],
+                  )
+                else
+                  const SizedBox(width: 48),
               ]),
             ),
             TabBar(
@@ -684,11 +772,10 @@ class _AddBillScreenState extends State<AddBillScreen>
               labelStyle: const TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w600),
               unselectedLabelStyle: const TextStyle(fontSize: 15),
-              tabs: [
-                const Tab(text: '支出'),
-                const Tab(text: '收入'),
-                // 编辑现有账单时不显示"转账"页
-                if (widget.bill == null) const Tab(text: '转账'),
+              tabs: const [
+                Tab(text: '支出'),
+                Tab(text: '收入'),
+                Tab(text: '转账'),
               ],
             ),
             // Amount display
@@ -877,37 +964,17 @@ class _AddBillScreenState extends State<AddBillScreen>
       if (!mounted) return;
       bumpRefresh();
       Navigator.pop(context, true);
-    } catch (_) {
-      _toast('转换失败，请重试');
+    } catch (e) {
+      _toast(e is ApiException ? e.message : '转换失败，请重试');
     }
   }
 
-  Future<void> _convertToTransfer() async {
-    final b = widget.bill;
-    if (b == null) return;
-    final others =
-        _allAccounts.where((a) => a.id != b.account.id).toList();
-    if (others.isEmpty) {
-      _toast('没有可选的对端账户');
-      return;
-    }
-    final dest = await showModalBottomSheet<Account>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => AccountPickerSheet(accounts: others, selectedId: null),
-    );
-    if (dest == null) return;
-    try {
-      await ApiService.convertBill(b.id, to: 'transfer', toAccountId: dest.id);
-      if (!mounted) return;
-      bumpRefresh();
-      Navigator.pop(context, true);
-    } catch (_) {
-      _toast('转换失败，请重试');
+  /// 学习"交易对方 → 账户"：下次导入同对手（如 羊绍波 → 中信）自动识别为转账
+  Future<void> _learnTransferMapping(Bill b, Account dest) async {
+    final keys = counterpartyLearnKeys(b.note);
+    if (keys.isNotEmpty) {
+      await PaymentMethodMap.putAll(
+          b.ledgerId, {for (final k in keys) k: dest.id});
     }
   }
 

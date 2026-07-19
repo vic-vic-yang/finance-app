@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'llm_config_service.dart';
 
 class AuthService {
   static const String _tokenKey = 'auth_token';
@@ -9,6 +10,8 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_userKey, jsonEncode(user));
+    // 加载该账号名下的 AI 模型配置（按账号隔离存储）
+    await LlmConfigService.instance.load(user['id'] as String?);
   }
 
   static Future<String?> getToken() async {
@@ -32,6 +35,9 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
+    // 只清内存态：AI 模型 Key 按账号留在本机安全存储，
+    // 同账号重新登录自动恢复，也不会泄露给同设备的其他账号
+    await LlmConfigService.instance.unload();
   }
 
   static Future<bool> isLoggedIn() async {

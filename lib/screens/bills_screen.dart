@@ -1331,8 +1331,11 @@ class _BillTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Center(
+                  // 转账账单一律显示 🔄（分类可能是历史贴错的，不直接展示）
                   child: Text(
-                    bill.category.icon ?? (bill.isIncome ? '💰' : '💸'),
+                    bill.isTransfer
+                        ? '🔄'
+                        : (bill.category.icon ?? (bill.isIncome ? '💰' : '💸')),
                     style: const TextStyle(fontSize: 19),
                   ),
                 ),
@@ -1342,7 +1345,7 @@ class _BillTile extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Flexible(
-                      child: Text(bill.category.name,
+                      child: Text(bill.isTransfer ? '转账' : bill.category.name,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               fontSize: 14,

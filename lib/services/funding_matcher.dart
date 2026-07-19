@@ -11,6 +11,8 @@ String normalizeFundingHint(String raw) {
   final tail = RegExp(r'(\d{4})\)?\s*$').firstMatch(s)?.group(1);
   final bank = _bankShort(s);
   if (bank != null && tail != null) return '$bank:$tail';
+  // 无银行关键词但末尾带卡号（如 "羊绍波 6217003800352"）→ 尾号比对账户名
+  if (tail != null) return 'card:$tail';
   return s;
 }
 
@@ -25,6 +27,36 @@ String? _bankShort(String s) {
     if (s.contains(e.key)) return e.value;
   }
   return null;
+}
+
+/// 从转账类备注里提取"交易对方"的学习键：
+/// - 卡号（≥6 位数字）→ 'card:尾4位'
+/// - 第一个人名/机构名片段（滤掉 转账/汇款 等业务词）
+/// 用于手动「转为账户间转账」后写入 PaymentMethodMap，
+/// 下次导入同对手时自动识别为转账。
+List<String> counterpartyLearnKeys(String note) {
+  final keys = <String>[];
+  // 卡号 → 尾 4 位
+  for (final m in RegExp(r'\d{6,}').allMatches(note)) {
+    final d = m.group(0)!;
+    keys.add('card:${d.substring(d.length - 4)}');
+  }
+  // 中文名片段
+  const stop = [
+    '转账', '汇款', '转账汇款', '行内转账', '汇入汇款', '跨行转出',
+    '转出', '转入', '快捷支付', '快捷退款', '银联', '代付',
+    '还款', '主动还款', '信用购', '花呗', '白条', '支付', '退款',
+  ];
+  for (final seg in note.split(RegExp(r'[·\s→←:：,，]+'))) {
+    final s = seg.trim();
+    if (s.length < 2 || s.length > 15) continue;
+    if (!RegExp(r'[\u4e00-\u9fff]').hasMatch(s)) continue;
+    if (RegExp(r'\d').hasMatch(s)) continue;
+    if (stop.any((w) => s == w)) continue;
+    keys.add(s);
+    break; // 只取第一个像名字的
+  }
+  return keys;
 }
 
 /// 在账户列表里找匹配的 accountId。

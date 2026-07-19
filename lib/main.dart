@@ -52,7 +52,9 @@ void main() async {
 
   // 在用户慢慢输账号密码这几秒里，先把 TLS 连接建好，省 1.5+ 秒 TLS 握手
   unawaited(ApiService.prewarm());
-  await LlmConfigService.instance.load();
+  // 按当前登录账号加载其 AI 模型配置（未登录则为空）
+  final savedUser = await AuthService.getUser();
+  await LlmConfigService.instance.load(savedUser?['id'] as String?);
   runApp(const FinanceApp());
 }
 

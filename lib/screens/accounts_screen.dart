@@ -2043,7 +2043,10 @@ class _AccountSheetState extends State<_AccountSheet> {
                         fontWeight: FontWeight.w500,
                         color: AppColors.text2)),
                 const SizedBox(height: 8),
-                Row(
+                // 等高双卡：IntrinsicHeight 先量出最高子项再 stretch
+                // （直接 stretch 会在滚动视图里拿到无限高度约束而崩溃）
+                IntrinsicHeight(
+                  child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                   Expanded(
@@ -2066,6 +2069,7 @@ class _AccountSheetState extends State<_AccountSheet> {
                     ),
                   ),
                 ]),
+                ),
                 // 负债账户不需要填初始余额，由"贷款本金 + 已还期数"算
                 if (!isEdit && _type != 'DEBT') ...[
                   const SizedBox(height: 16),

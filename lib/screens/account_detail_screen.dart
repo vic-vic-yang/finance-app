@@ -1625,7 +1625,9 @@ class _BillRow extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    bill.category.icon ?? (bill.isIncome ? '💰' : '💸'),
+                    bill.isTransfer
+                        ? '🔄'
+                        : (bill.category.icon ?? (bill.isIncome ? '💰' : '💸')),
                     style: const TextStyle(fontSize: 18),
                   ),
                 ),
@@ -1637,7 +1639,7 @@ class _BillRow extends StatelessWidget {
                   children: [
                     Row(children: [
                       Flexible(
-                        child: Text(bill.category.name,
+                        child: Text(bill.isTransfer ? '转账' : bill.category.name,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                                 fontSize: 14,
