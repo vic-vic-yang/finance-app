@@ -133,20 +133,20 @@ class LlmConfigService {
     try {
       if (_userId != null) {
         var migrated = false;
+        var cleanupGlobal = false;
+        var cleanupLegacy = false;
         var raw = await _storage.read(key: _configsKey);
         if (raw == null) {
           // 迁移①：上一版的全局多配置（未按账号隔离）→ 当前账号
           raw = await _storage.read(key: _globalConfigs);
           if (raw != null) {
             _activeId = await _storage.read(key: _globalActiveId);
-            await Future.wait([
-              _storage.delete(key: _globalConfigs),
-              _storage.delete(key: _globalActiveId),
-            ]);
             migrated = true;
+            cleanupGlobal = true;
           } else {
             // 迁移②：更早的单配置版本
             migrated = await _migrateLegacy();
+            cleanupLegacy = migrated;
           }
         }
         if (raw != null) {
@@ -157,7 +157,17 @@ class LlmConfigService {
         if (_activeId == null || !_configs.any((c) => c.id == _activeId)) {
           _activeId = _configs.isEmpty ? null : _configs.first.id;
         }
-        if (migrated) await _persist();
+        if (migrated) {
+          // 先写目标、成功后再清源键——迁移永不丢数据
+          await _persist();
+          if (cleanupGlobal) {
+            await Future.wait([
+              _storage.delete(key: _globalConfigs),
+              _storage.delete(key: _globalActiveId),
+            ]);
+          }
+          if (cleanupLegacy) await _deleteLegacyKeys();
+        }
       } else {
         // 未登录（或本地用户信息缺 id）：只读加载全局/旧配置到内存，
         // 保证 AI 功能可用；不落盘不删除，等登录拿到 userId 后正式迁移
@@ -165,9 +175,9 @@ class LlmConfigService {
         if (raw != null) {
           _configs = _parseConfigs(raw);
           _activeId = await _storage.read(key: _globalActiveId);
-        } else if (await _migrateLegacy(persist: false)) {
-          // _migrateLegacy(persist:false) 已填好 _configs/_activeId，
-          // 旧键保留不删，等登录拿到 userId 后走正式迁移
+        } else if (await _migrateLegacy()) {
+          // _migrateLegacy 已填好 _configs/_activeId，旧键保留不删，
+          // 等登录拿到 userId 后走正式迁移（写目标成功才清源键）
         }
       }
       if (_userId == null &&
@@ -182,16 +192,28 @@ class LlmConfigService {
     _loaded = true;
   }
 
+  /// 解析存储的配置列表。原则：迁移/读取永不丢数据——
+  /// 缺 id 的补齐 id；字段不完整的也保留（用户在编辑页补全/手动删除）。
   static List<PersonalLlmConfig> _parseConfigs(String raw) =>
       (jsonDecode(raw) as List)
           .whereType<Map>()
           .map((e) => PersonalLlmConfig.fromJson(e.cast<String, dynamic>()))
-          .where((c) => c.id.isNotEmpty && c.isComplete)
+          .map((c) => c.id.isNotEmpty
+              ? c
+              : PersonalLlmConfig(
+                  id: _newId(),
+                  provider: c.provider,
+                  baseUrl: c.baseUrl,
+                  apiKey: c.apiKey,
+                  model: c.model,
+                  visionModel: c.visionModel,
+                ))
           .toList();
 
   /// 旧版（单配置）→ 当前账号的多配置列表；返回是否有迁移发生。
-  /// [persist]=false 时只读到内存，不删除旧键（未登录兜底路径用）
-  Future<bool> _migrateLegacy({bool persist = true}) async {
+  /// 只读不删（删除由 load() 在目标写入成功后做）；字段不完整也保留，
+  /// 用户在编辑页补全或手动删除——迁移永不丢数据。
+  Future<bool> _migrateLegacy() async {
     final vals = await Future.wait([
       _storage.read(key: _legacyProvider),
       _storage.read(key: _legacyBaseUrl),
@@ -209,19 +231,18 @@ class LlmConfigService {
       model: vals[3] ?? '',
       visionModel: vals[4] ?? '',
     );
-    if (persist) {
-      await Future.wait([
+    _configs = [legacy];
+    _activeId = legacy.isComplete ? legacy.id : null;
+    return true;
+  }
+
+  Future<void> _deleteLegacyKeys() => Future.wait([
         _storage.delete(key: _legacyProvider),
         _storage.delete(key: _legacyBaseUrl),
         _storage.delete(key: _legacyApiKey),
         _storage.delete(key: _legacyModel),
         _storage.delete(key: _legacyVision),
       ]);
-    }
-    _configs = legacy.isComplete ? [legacy] : [];
-    _activeId = _configs.isEmpty ? null : _configs.first.id;
-    return true;
-  }
 
   Future<void> _ensureLoaded() async {
     if (!_loaded) await load();
