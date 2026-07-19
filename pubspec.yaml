@@ -1,7 +1,7 @@
 name: finance_app
 description: 司库 · 你的私人财务管家
 publish_to: 'none'
-version: 1.0.21+23
+version: 1.0.22+24
 
 environment:
   sdk: ^3.5.0
