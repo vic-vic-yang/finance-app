@@ -438,7 +438,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primary)),
+                      color: AppColors.text1)),
             ),
           ],
         ),

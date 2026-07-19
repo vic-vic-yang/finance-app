@@ -78,9 +78,8 @@ class _AccountsScreenState extends State<AccountsScreen>
     super.build(context);
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('账户'),
+      appBar: AuraAppBar(
+        title: '账户',
         actions: [
           IconButton(
             tooltip: '添加账户',
@@ -174,7 +173,7 @@ class _AccountsScreenState extends State<AccountsScreen>
               hint: '账本成员共用'),
         if (_sharedAccounts.isNotEmpty && !_collapsed.contains('SHARED'))
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (_, i) => _AccountTile(
@@ -208,7 +207,8 @@ class _AccountsScreenState extends State<AccountsScreen>
     return _typeOrder.contains(type) ? type : 'OTHER';
   }
 
-  /// 「我的账户」按类型分组渲染：固定类型顺序，组内新建在前（id 倒序≈时间倒序）
+  /// 「我的账户」按类型分组渲染：固定类型顺序，组内新建在前（id 倒序≈时间倒序）。
+  /// 全部统一整行卡片——账户少时整齐不碎、账户多时靠分组标题扫读。
   List<Widget> _mineGroupedSlivers() {
     final groups = <String, List<Account>>{};
     for (final a in _mineAccounts) {
@@ -229,44 +229,19 @@ class _AccountsScreenState extends State<AccountsScreen>
           '${list.first.typeEmoji} ${list.first.typeLabel}', list.length,
           groupKey: k, collapsed: collapsed));
       if (collapsed) continue;
-      // 信用卡/负债（带信息条）+ 银行卡 → 整行大卡；其余 → 两列紧凑网格（省高度）
-      final fullWidth = k == 'CREDIT' || k == 'DEBT' || k == 'BANK';
-      if (fullWidth) {
-        out.add(SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _AccountTile(
-                account: list[i],
-                onEdit: () => _showAccountSheet(context, account: list[i]),
-                onDelete: () => _deleteAccount(list[i]),
-              ),
-              childCount: list.length,
+      out.add(SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (_, i) => _AccountTile(
+              account: list[i],
+              onEdit: () => _showAccountSheet(context, account: list[i]),
+              onDelete: () => _deleteAccount(list[i]),
             ),
+            childCount: list.length,
           ),
-        ));
-      } else {
-        out.add(SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          sliver: SliverGrid(
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisExtent: 104,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _AccountGridCard(
-                account: list[i],
-                onEdit: () => _showAccountSheet(context, account: list[i]),
-                onDelete: () => _deleteAccount(list[i]),
-              ),
-              childCount: list.length,
-            ),
-          ),
-        ));
-      }
+        ),
+      ));
     }
     return out;
   }
@@ -280,7 +255,7 @@ class _AccountsScreenState extends State<AccountsScreen>
             if (!_collapsed.remove(groupKey)) _collapsed.add(groupKey);
           }),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
             child: Row(children: [
               Text(title,
                   style: TextStyle(
@@ -435,28 +410,28 @@ class _AccountTile extends StatelessWidget {
     final (balLabel, balValue, balColor) = _balanceDisplay;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    AccountDetailScreen(accountId: account.id),
-              ),
-            );
-          },
-          child: Container(
+      child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
-        child: Column(
-          children: [
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      AccountDetailScreen(accountId: account.id),
+                ),
+              );
+            },
+            child: Column(
+              children: [
             ListTile(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -559,29 +534,11 @@ class _AccountTile extends StatelessWidget {
             ),
             // ── 类型相关信息条 ─────────────────────────────────
             if (account.info != null) _infoBanner(account.info!),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
-        ),
-      ),
-    );
-  }
-
-  static (String, double, Color) balanceDisplayOf(Account account) {
-    if (account.isCredit) {
-      final owed = account.balance < 0 ? -account.balance : 0.0;
-      return ('欠款', owed.toDouble(),
-          owed > 0 ? AppColors.expense : AppColors.text1);
-    }
-    if (account.isDebt) {
-      final owed =
-          account.balance < 0 ? -account.balance : account.balance.abs();
-      return ('欠款', owed, owed > 0 ? AppColors.expense : AppColors.text1);
-    }
-    return (
-      '余额',
-      account.balance,
-      account.balance >= 0 ? AppColors.text1 : AppColors.expense
     );
   }
 
@@ -830,124 +787,6 @@ class _AccountTile extends StatelessWidget {
       '${d.month}月${d.day}日';
 }
 
-/// 紧凑两列网格卡：名字 + 余额（用于现金/银行卡/虚拟等无信息条的账户）
-class _AccountGridCard extends StatelessWidget {
-  const _AccountGridCard({
-    required this.account,
-    required this.onEdit,
-    required this.onDelete,
-  });
-  final Account account;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final (balLabel, balValue, balColor) =
-        _AccountTile.balanceDisplayOf(account);
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AccountDetailScreen(accountId: account.id),
-          ),
-        ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Center(
-                      child: Text(account.typeEmoji,
-                          style: const TextStyle(fontSize: 18))),
-                ),
-                const Spacer(),
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: PopupMenuButton<String>(
-                    padding: EdgeInsets.zero,
-                    icon: Icon(Icons.more_vert_rounded,
-                        color: AppColors.text3, size: 18),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                          value: 'edit',
-                          child: Row(children: [
-                            Icon(Icons.edit_outlined,
-                                size: 18, color: AppColors.text2),
-                            const SizedBox(width: 10),
-                            const Text('编辑'),
-                          ])),
-                      PopupMenuItem(
-                          value: 'delete',
-                          child: Row(children: [
-                            Icon(Icons.delete_outline_rounded,
-                                size: 18, color: AppColors.danger),
-                            const SizedBox(width: 10),
-                            Text('删除',
-                                style: TextStyle(color: AppColors.danger)),
-                          ])),
-                    ],
-                    onSelected: (v) {
-                      if (v == 'edit') onEdit();
-                      if (v == 'delete') onDelete();
-                    },
-                  ),
-                ),
-              ]),
-              const Spacer(),
-              Text(account.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.text1)),
-              const SizedBox(height: 2),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(fmtMoney(balValue),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: balColor)),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(balLabel,
-                      style:
-                          TextStyle(fontSize: 10.5, color: AppColors.text3)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ── Add/Edit account bottom sheet ─────────────────────────────
 class _AccountSheet extends StatefulWidget {

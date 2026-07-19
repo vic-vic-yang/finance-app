@@ -253,12 +253,13 @@ class AppTheme {
         centerTitle: false,
         titleSpacing: 20,
         titleTextStyle: GoogleFonts.outfit(
-          color: AppColors.primary,
+          // 页面标题统一正文黑（text1），主题色只留给操作/强调——与 AuraAppBar 一致
+          color: AppColors.text1,
           fontSize: 21,
           fontWeight: FontWeight.w700,
           letterSpacing: -0.4,
         ),
-        iconTheme: IconThemeData(color: AppColors.primary, size: 22),
+        iconTheme: IconThemeData(color: AppColors.text1, size: 22),
       ),
       // 卡片：大圆角 + 极淡描边，无固定阴影（用 ambientShadow 自己加）
       cardTheme: CardThemeData(

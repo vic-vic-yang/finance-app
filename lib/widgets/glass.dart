@@ -512,35 +512,39 @@ class AuraAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final hasAvatar = avatarTap != null;
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      toolbarHeight: toolbarHeight,
-      titleSpacing: hasAvatar ? 12 : 20,
-      leadingWidth: hasAvatar ? 64 : null,
-      leading: hasAvatar
-          ? Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Center(child: ProfileAvatar(onTap: avatarTap!)),
-            )
-          : null,
-      title: titleWidget ??
-          (title != null
-              ? Text(
-                  title!,
-                  style: TextStyle(
-                    // 页面标题用正文黑（text1），主题色只留给重点操作
-                    color: AppColors.text1,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.4,
-                  ),
-                )
-              : null),
-      actions: actions,
-      bottom: bottom,
+    // 全站 header 颜色规则统一收口在这里：标题正文黑(text1)、图标 text1，
+    // 主题色只留给页面里的 CTA/强调，不进导航栏
+    return IconTheme(
+      data: IconThemeData(color: AppColors.text1, size: 22),
+      child: AppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: toolbarHeight,
+        titleSpacing: hasAvatar ? 12 : 20,
+        leadingWidth: hasAvatar ? 64 : null,
+        leading: hasAvatar
+            ? Padding(
+                padding: const EdgeInsets.only(left: 20),
+                child: Center(child: ProfileAvatar(onTap: avatarTap!)),
+              )
+            : null,
+        title: titleWidget ??
+            (title != null
+                ? Text(
+                    title!,
+                    style: TextStyle(
+                      color: AppColors.text1,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                    ),
+                  )
+                : null),
+        actions: actions,
+        bottom: bottom,
+      ),
     );
   }
 }
@@ -586,36 +590,39 @@ class AuraSliverAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasAvatar = avatarTap != null;
-    return SliverAppBar(
-      pinned: true,
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      toolbarHeight: toolbarHeight,
-      titleSpacing: hasAvatar ? 12 : 20,
-      leadingWidth: hasAvatar ? 64 : null,
-      leading: hasAvatar
-          ? Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Center(child: ProfileAvatar(onTap: avatarTap!)),
-            )
-          : null,
-      title: titleWidget ??
-          (title != null
-              ? Text(
-                  title!,
-                  style: TextStyle(
-                    // 页面标题用正文黑（text1），主题色只留给重点操作
-                    color: AppColors.text1,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.4,
-                  ),
-                )
-              : null),
-      actions: actions,
-      flexibleSpace: const _GlassHeaderBg(),
+    return IconTheme(
+      data: IconThemeData(color: AppColors.text1, size: 22),
+      child: SliverAppBar(
+        pinned: true,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: toolbarHeight,
+        titleSpacing: hasAvatar ? 12 : 20,
+        leadingWidth: hasAvatar ? 64 : null,
+        leading: hasAvatar
+            ? Padding(
+                padding: const EdgeInsets.only(left: 20),
+                child: Center(child: ProfileAvatar(onTap: avatarTap!)),
+              )
+            : null,
+        title: titleWidget ??
+            (title != null
+                ? Text(
+                    title!,
+                    style: TextStyle(
+                      // 页面标题用正文黑（text1），主题色只留给重点操作
+                      color: AppColors.text1,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                    ),
+                  )
+                : null),
+        actions: actions,
+        flexibleSpace: const _GlassHeaderBg(),
+      ),
     );
   }
 }
