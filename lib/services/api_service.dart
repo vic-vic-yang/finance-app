@@ -438,6 +438,8 @@ class ApiService {
     String? endDate,
     double? minAmount,
     double? maxAmount,
+    String? isTransfer,
+    String? source,
   }) =>
       _get('/bills', params: {
         'page': page.toString(),
@@ -456,6 +458,8 @@ class ApiService {
         if (endDate != null) 'endDate': endDate,
         if (minAmount != null) 'minAmount': minAmount.toString(),
         if (maxAmount != null) 'maxAmount': maxAmount.toString(),
+        if (isTransfer != null) 'isTransfer': isTransfer,
+        if (source != null) 'source': source,
       });
 
   static Future<Map<String, dynamic>> createBill({

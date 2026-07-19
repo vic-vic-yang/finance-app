@@ -86,6 +86,8 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
       final byMerchant = <String, _MerchantAgg>{};
       final byWeek = <String, _WeekAgg>{};
       for (final b in bills) {
+        // 转账（账户互转）与股票纸面盈亏不计收支（与统计口径一致）
+        if (b.isTransfer || b.source == 'stock') continue;
         if (b.type == 'income') {
           income += b.amount;
         } else {

@@ -98,6 +98,9 @@ class Bill {
   final BillUser? user; // 记账人
   /// 是否转账/借贷类账单（不计收支）；编辑时用于隐藏"转为借贷/转账"入口
   final bool isTransfer;
+  /// 来源渠道：manual / alipay / wechat / stock / transfer / reconcile
+  /// stock = 股票每日结算的纸面盈亏（只读，不可编辑/删除）
+  final String source;
 
   Bill({
     required this.id,
@@ -111,6 +114,7 @@ class Bill {
     required this.date,
     this.user,
     this.isTransfer = false,
+    this.source = 'manual',
   });
 
   factory Bill.fromJson(Map<String, dynamic> json) => Bill(
@@ -128,6 +132,7 @@ class Bill {
             ? BillUser.fromJson(json['user'] as Map<String, dynamic>)
             : null,
         isTransfer: json['isTransfer'] as bool? ?? false,
+        source: json['source'] as String? ?? 'manual',
       );
 
   /// 客户端用账本 DEK 解出来的备注

@@ -7,6 +7,8 @@ import '../services/api_service.dart';
 import '../models/bill.dart';
 import '../widgets/glass.dart';
 import 'add_bill_screen.dart';
+import 'bills_screen.dart';
+import 'tools/stock_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -49,6 +51,9 @@ class _StatsScreenState extends State<StatsScreen>
   // 多人账本：按记账人聚合
   List<_MemberStat> _memberStats = [];
 
+  // 股票持仓（统计卡片用，仅 held=true；与股票页同一接口/口径）
+  List<Map<String, dynamic>> _stockHoldings = [];
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +69,22 @@ class _StatsScreenState extends State<StatsScreen>
 
   void _onBump() {
     if (mounted) _load();
+  }
+
+  /// 跳到账单页并按当前周期 + 点击维度预选过滤（对账用）
+  void _openBills({String? type, String? userId}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BillsScreen(
+          isTab: false,
+          initialType: type,
+          initialUserIds: userId != null ? [userId] : null,
+          initialRangeStart: DateTime.parse(_startDate),
+          initialRangeEnd: DateTime.parse(_endDate),
+        ),
+      ),
+    );
   }
 
   String get _startDate {
@@ -156,6 +177,16 @@ class _StatsScreenState extends State<StatsScreen>
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+    // 股票持仓（best-effort，不阻塞主统计；无持仓则卡片不显示）
+    ApiService.getStocks().then((list) {
+      if (!mounted) return;
+      setState(() {
+        _stockHoldings = list
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .where((s) => s['held'] == true)
+            .toList();
+      });
+    }).catchError((_) {});
   }
 
   void _prev() {
@@ -256,6 +287,10 @@ class _StatsScreenState extends State<StatsScreen>
                     _assetCard(),
                     const SizedBox(height: 16),
                     _summaryRow(),
+                    if (_stockHoldings.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _stockCard(),
+                    ],
                     if (_memberStats.length >= 2) ...[
                       const SizedBox(height: 16),
                       _memberCard(),
@@ -545,14 +580,17 @@ class _StatsScreenState extends State<StatsScreen>
   // ── Summary row ───────────────────────────────────────────────
   Widget _summaryRow() => Row(children: [
         _summaryCard('收入', _totalIncome, AppColors.income,
-            AppColors.incomeLight, prev: _prevIncome),
+            AppColors.incomeLight, prev: _prevIncome,
+            onTap: () => _openBills(type: 'income')),
         const SizedBox(width: 10),
         _summaryCard('支出', _totalExpense, AppColors.expense,
-            AppColors.expenseLight, prev: _prevExpense),
+            AppColors.expenseLight, prev: _prevExpense,
+            onTap: () => _openBills(type: 'expense')),
         const SizedBox(width: 10),
         _summaryCard('结余', _totalIncome - _totalExpense,
             AppColors.primary, AppColors.primaryLight,
-            prev: _prevIncome - _prevExpense),
+            prev: _prevIncome - _prevExpense,
+            onTap: () => _openBills()),
       ]);
 
   /// 环比文案：上一期为 0/负基准时不给百分比（没意义）
@@ -565,39 +603,118 @@ class _StatsScreenState extends State<StatsScreen>
 
   Widget _summaryCard(
       String label, double amount, Color color, Color bg,
-      {double? prev}) {
+      {double? prev, VoidCallback? onTap}) {
     final mom = prev != null ? _momText(amount, prev) : null;
     return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12, color: color, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 6),
-            Text(
-              fmtMoneyInt(amount.abs()),
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                  letterSpacing: -0.5),
-              overflow: TextOverflow.ellipsis,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(14),
             ),
-            if (mom != null) ...[
-              const SizedBox(height: 3),
-              Text(mom,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: AppColors.text2)),
-            ],
-          ]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 12, color: color, fontWeight: FontWeight.w500)),
+                const Spacer(),
+                if (onTap != null)
+                  Icon(Icons.chevron_right_rounded, size: 14, color: color),
+              ]),
+              const SizedBox(height: 6),
+              Text(
+                fmtMoneyInt(amount.abs()),
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    letterSpacing: -0.5),
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (mom != null) ...[
+                const SizedBox(height: 3),
+                Text(mom,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, color: AppColors.text2)),
+              ],
+            ]),
+          ),
         ),
       );
+  }
+
+  // ── 股票持仓卡：市值/当日盈亏/总盈亏（口径与股票页一致），点击进股票页 ──
+  Widget _stockCard() {
+    double cost = 0, mv = 0, todayPnl = 0;
+    var hasToday = false;
+    for (final s in _stockHoldings) {
+      final bp = (s['buyPrice'] as num?)?.toDouble();
+      final sh = (s['shares'] as num?)?.toDouble();
+      final pr = (s['price'] as num?)?.toDouble();
+      if (bp == null || sh == null || pr == null || bp <= 0 || sh <= 0) {
+        continue;
+      }
+      cost += bp * sh;
+      mv += pr * sh;
+      final ch = (s['change'] as num?)?.toDouble();
+      if (ch != null) {
+        todayPnl += ch * sh;
+        hasToday = true;
+      }
+    }
+    final pl = mv - cost;
+    final plPct = cost > 0 ? pl / cost * 100 : 0.0;
+    final plColor = pl >= 0 ? AppColors.income : AppColors.expense;
+    final todayColor = todayPnl >= 0 ? AppColors.income : AppColors.expense;
+
+    return GlassCard(
+      radius: 16,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StockScreen()),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(children: [
+        Text('📈', style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('股票持仓 · ${_stockHoldings.length} 只',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.text2,
+                    fontWeight: FontWeight.w500)),
+            const SizedBox(height: 3),
+            Text('市值 ${fmtMoney(mv)}',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.text1)),
+          ]),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          if (hasToday)
+            Text('今日 ${todayPnl >= 0 ? '+' : ''}${fmtMoney(todayPnl)}',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: todayColor)),
+          const SizedBox(height: 2),
+          Text(
+            '总盈亏 ${pl >= 0 ? '+' : ''}${fmtMoney(pl)}'
+            '（${pl >= 0 ? '+' : ''}${plPct.toStringAsFixed(1)}%）',
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: plColor),
+          ),
+        ]),
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.text3),
+      ]),
+    );
   }
 
   // ── Member breakdown card（按记账人统计） ─────────────────
@@ -675,7 +792,10 @@ class _StatsScreenState extends State<StatsScreen>
     final pct = maxAmount > 0 ? (m.income + m.expense) / maxAmount : 0.0;
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-      child: Column(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openBills(userId: m.userId),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
@@ -703,6 +823,8 @@ class _StatsScreenState extends State<StatsScreen>
             ),
             Text('${m.count} 笔',
                 style: TextStyle(fontSize: 11, color: AppColors.text3)),
+            Icon(Icons.chevron_right_rounded,
+                size: 14, color: AppColors.text3),
           ]),
           const SizedBox(height: 6),
           ClipRRect(
@@ -740,6 +862,7 @@ class _StatsScreenState extends State<StatsScreen>
             ],
           ]),
         ],
+        ),
       ),
     );
   }

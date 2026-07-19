@@ -1479,11 +1479,12 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final flatItems = <Widget>[];
     for (final dayKey in dayKeys) {
       final items = dayGroups[dayKey]!;
+      // 小计口径与汇总一致：转账腿与股票纸面盈亏都不计收支
       final dayIncome = items
-          .where((b) => b.isIncome)
+          .where((b) => b.isIncome && !b.isTransfer && b.source != 'stock')
           .fold(0.0, (s, b) => s + b.amount);
       final dayExpense = items
-          .where((b) => !b.isIncome)
+          .where((b) => !b.isIncome && !b.isTransfer && b.source != 'stock')
           .fold(0.0, (s, b) => s + b.amount);
 
       flatItems.add(
@@ -1688,14 +1689,18 @@ class _BillRow extends StatelessWidget {
                         fontSize: 11, color: AppColors.text2)),
               ]),
               const SizedBox(width: 4),
-              GestureDetector(
-                onTap: onDelete,
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.delete_outline_rounded,
-                      size: 18, color: AppColors.text2),
+              // 股票盈亏账单由每日结算维护，只读不删
+              if (bill.source == 'stock')
+                const SizedBox(width: 26)
+              else
+                GestureDetector(
+                  onTap: onDelete,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.delete_outline_rounded,
+                        size: 18, color: AppColors.text2),
+                  ),
                 ),
-              ),
             ]),
           ),
         ),

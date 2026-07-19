@@ -14,8 +14,20 @@ import 'add_bill_screen.dart';
 
 class BillsScreen extends StatefulWidget {
   /// true=作为底部 tab（左上头像、透明底）；false=二级页（返回箭头、bg 底）
-  const BillsScreen({super.key, this.isTab = false});
+  const BillsScreen({
+    super.key,
+    this.isTab = false,
+    this.initialType,
+    this.initialUserIds,
+    this.initialRangeStart,
+    this.initialRangeEnd,
+  });
   final bool isTab;
+  /// 从统计页等跳入时的预选过滤（对账用）：类型 / 记账人 / 日期范围
+  final String? initialType; // 'income' / 'expense'
+  final List<String>? initialUserIds;
+  final DateTime? initialRangeStart;
+  final DateTime? initialRangeEnd;
   @override
   State<BillsScreen> createState() => _BillsScreenState();
 }
@@ -33,6 +45,8 @@ class _BillsScreenState extends State<BillsScreen>
   bool   _loadingMore = false;
   bool   _hasMore = true;
   String? _filterType;
+  bool _filterTransfersOnly = false; // 类型筛选=只看转账（转账不算收支）
+  String? _filterSource; // 来源筛选（'stock'=只看股票盈亏）
   final Set<String> _filterUserIds = {}; // 成员多选
   final Set<String> _filterAccountIds = {}; // 账户多选
   final Set<String> _filterCategoryIds = {}; // 分类多选
@@ -95,6 +109,16 @@ class _BillsScreenState extends State<BillsScreen>
   @override
   void initState() {
     super.initState();
+    // 统计页跳入：预选过滤条件
+    _filterType = widget.initialType;
+    if (widget.initialUserIds != null) {
+      _filterUserIds.addAll(widget.initialUserIds!);
+    }
+    if (widget.initialRangeStart != null || widget.initialRangeEnd != null) {
+      _dateMode = _DateMode.range;
+      _rangeStart = widget.initialRangeStart;
+      _rangeEnd = widget.initialRangeEnd;
+    }
     refreshBus.addListener(_onBump);
     _loadMembers();
     _loadAccounts();
@@ -177,6 +201,10 @@ class _BillsScreenState extends State<BillsScreen>
         page: 1,
         limit: 20,
         type: _filterType,
+        isTransfer: _filterTransfersOnly
+            ? 'true'
+            : (_filterSource != null ? 'false' : null),
+        source: _filterSource,
         userIds: _filterUserIds.toList(),
         accountIds: _filterAccountIds.toList(),
         categoryIds: _filterCategoryIds.toList(),
@@ -206,6 +234,10 @@ class _BillsScreenState extends State<BillsScreen>
         page: _page,
         limit: 20,
         type: _filterType,
+        isTransfer: _filterTransfersOnly
+            ? 'true'
+            : (_filterSource != null ? 'false' : null),
+        source: _filterSource,
         userIds: _filterUserIds.toList(),
         accountIds: _filterAccountIds.toList(),
         categoryIds: _filterCategoryIds.toList(),
@@ -717,6 +749,8 @@ class _BillsScreenState extends State<BillsScreen>
       _filterAccountIds.isNotEmpty ||
       _filterCategoryIds.isNotEmpty ||
       _filterType != null ||
+      _filterTransfersOnly ||
+      _filterSource != null ||
       _dateMode != _DateMode.all ||
       _minAmount != null ||
       _maxAmount != null;
@@ -786,11 +820,15 @@ class _BillsScreenState extends State<BillsScreen>
     return '${_filterCategoryIds.length} 个分类';
   }
 
-  String get _typeLabel => _filterType == 'income'
-      ? '收入'
-      : _filterType == 'expense'
-          ? '支出'
-          : '全部';
+  String get _typeLabel => _filterTransfersOnly
+      ? '转账'
+      : _filterSource == 'stock'
+          ? '股票盈亏'
+          : _filterType == 'income'
+              ? '收入'
+              : _filterType == 'expense'
+                  ? '支出'
+                  : '全部';
 
   String get _amountLabel {
     if (_minAmount == null && _maxAmount == null) return '不限';
@@ -857,6 +895,8 @@ class _BillsScreenState extends State<BillsScreen>
                                       _filterAccountIds.clear();
                                       _filterCategoryIds.clear();
                                       _filterType = null;
+                                      _filterTransfersOnly = false;
+                                      _filterSource = null;
                                       _dateMode = _DateMode.all;
                                       _rangeStart = null;
                                       _rangeEnd = null;
@@ -909,7 +949,9 @@ class _BillsScreenState extends State<BillsScreen>
                               icon: Icons.swap_vert_rounded,
                               label: '类型',
                               value: _typeLabel,
-                              active: _filterType != null,
+                              active: _filterType != null ||
+                                  _filterTransfersOnly ||
+                                  _filterSource != null,
                               onTap: () => pick(_pickType),
                             ),
                             _drawerRow(
@@ -1063,6 +1105,14 @@ class _BillsScreenState extends State<BillsScreen>
 
   /// 类型选择（抽屉行入口）
   Future<void> _pickType() async {
+    const kTransfer = '__transfer__';
+    const kStock = '__stock__';
+    bool selOf(String? v) {
+      if (v == kTransfer) return _filterTransfersOnly;
+      if (v == kStock) return _filterSource == 'stock';
+      return !_filterTransfersOnly && _filterSource == null && _filterType == v;
+    }
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -1076,23 +1126,41 @@ class _BillsScreenState extends State<BillsScreen>
             (null, '全部'),
             ('income', '收入'),
             ('expense', '支出'),
+            (kTransfer, '转账'),
+            (kStock, '股票盈亏'),
           ])
             ListTile(
               dense: true,
               title: Text(e.$2,
                   style: TextStyle(
-                      color: _filterType == e.$1
-                          ? AppColors.primary
-                          : AppColors.text1,
-                      fontWeight: _filterType == e.$1
+                      color: selOf(e.$1) ? AppColors.primary : AppColors.text1,
+                      fontWeight: selOf(e.$1)
                           ? FontWeight.w600
                           : FontWeight.normal)),
               onTap: () {
                 Navigator.pop(ctx);
                 // 点已选的类型 = 取消（回到全部）
-                final next = _filterType == e.$1 ? null : e.$1;
-                if (_filterType == next) return;
                 setState(() {
+                  if (e.$1 == kTransfer) {
+                    _filterTransfersOnly = !_filterTransfersOnly;
+                    if (_filterTransfersOnly) {
+                      _filterType = null;
+                      _filterSource = null;
+                    }
+                    return;
+                  }
+                  if (e.$1 == kStock) {
+                    _filterSource = _filterSource == 'stock' ? null : 'stock';
+                    if (_filterSource != null) {
+                      _filterType = null;
+                      _filterTransfersOnly = false;
+                    }
+                    return;
+                  }
+                  _filterTransfersOnly = false;
+                  _filterSource = null;
+                  final next = _filterType == e.$1 ? null : e.$1;
+                  if (_filterType == next) return;
                   _filterType = next;
                   // 联动：清掉与新类型冲突的已选分类（收入类型配支出分类无意义）
                   if (next != null && _filterCategoryIds.isNotEmpty) {
@@ -1202,11 +1270,12 @@ class _BillsScreenState extends State<BillsScreen>
 
         final dayKey = dayKeys[i];
         final items = dayGroups[dayKey]!;
+        // 小计口径与汇总一致：转账腿与股票纸面盈亏都不计收支
         final dayIncome = items
-            .where((b) => b.isIncome)
+            .where((b) => b.isIncome && !b.isTransfer && b.source != 'stock')
             .fold(0.0, (s, b) => s + b.amount);
         final dayExpense = items
-            .where((b) => !b.isIncome)
+            .where((b) => !b.isIncome && !b.isTransfer && b.source != 'stock')
             .fold(0.0, (s, b) => s + b.amount);
 
         return Padding(
@@ -1394,14 +1463,18 @@ class _BillTile extends StatelessWidget {
                     style: TextStyle(fontSize: 11, color: AppColors.text2)),
               ]),
               const SizedBox(width: 4),
-              GestureDetector(
-                onTap: onDelete,
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.delete_outline_rounded,
-                      size: 18, color: AppColors.text2),
+              // 股票盈亏账单由每日结算维护，只读不删
+              if (bill.source == 'stock')
+                const SizedBox(width: 26)
+              else
+                GestureDetector(
+                  onTap: onDelete,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.delete_outline_rounded,
+                        size: 18, color: AppColors.text2),
+                  ),
                 ),
-              ),
             ]),
           ),
         ),

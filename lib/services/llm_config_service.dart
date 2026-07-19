@@ -125,7 +125,7 @@ class LlmConfigService {
   String get _activeKey => '$_kActivePrefix$_userId';
 
   /// 启动时（main）与登录成功时（AuthService.saveAuth）调用。
-  /// [userId] 省略则沿用当前账号；传 null 表示未登录（清空内存态）。
+  /// [userId] 省略则沿用当前账号；传 null 表示未登录。
   Future<void> load([String? userId]) async {
     _userId = userId ?? _userId;
     _configs = [];
@@ -158,6 +158,22 @@ class LlmConfigService {
           _activeId = _configs.isEmpty ? null : _configs.first.id;
         }
         if (migrated) await _persist();
+      } else {
+        // 未登录（或本地用户信息缺 id）：只读加载全局/旧配置到内存，
+        // 保证 AI 功能可用；不落盘不删除，等登录拿到 userId 后正式迁移
+        var raw = await _storage.read(key: _globalConfigs);
+        if (raw != null) {
+          _configs = _parseConfigs(raw);
+          _activeId = await _storage.read(key: _globalActiveId);
+        } else if (await _migrateLegacy(persist: false)) {
+          // _migrateLegacy(persist:false) 已填好 _configs/_activeId，
+          // 旧键保留不删，等登录拿到 userId 后走正式迁移
+        }
+      }
+      if (_userId == null &&
+          _activeId == null &&
+          _configs.isNotEmpty) {
+        _activeId = _configs.first.id;
       }
     } catch (_) {
       _configs = [];
@@ -173,8 +189,9 @@ class LlmConfigService {
           .where((c) => c.id.isNotEmpty && c.isComplete)
           .toList();
 
-  /// 旧版（单配置）→ 当前账号的多配置列表；返回是否有迁移发生
-  Future<bool> _migrateLegacy() async {
+  /// 旧版（单配置）→ 当前账号的多配置列表；返回是否有迁移发生。
+  /// [persist]=false 时只读到内存，不删除旧键（未登录兜底路径用）
+  Future<bool> _migrateLegacy({bool persist = true}) async {
     final vals = await Future.wait([
       _storage.read(key: _legacyProvider),
       _storage.read(key: _legacyBaseUrl),
@@ -192,13 +209,15 @@ class LlmConfigService {
       model: vals[3] ?? '',
       visionModel: vals[4] ?? '',
     );
-    await Future.wait([
-      _storage.delete(key: _legacyProvider),
-      _storage.delete(key: _legacyBaseUrl),
-      _storage.delete(key: _legacyApiKey),
-      _storage.delete(key: _legacyModel),
-      _storage.delete(key: _legacyVision),
-    ]);
+    if (persist) {
+      await Future.wait([
+        _storage.delete(key: _legacyProvider),
+        _storage.delete(key: _legacyBaseUrl),
+        _storage.delete(key: _legacyApiKey),
+        _storage.delete(key: _legacyModel),
+        _storage.delete(key: _legacyVision),
+      ]);
+    }
     _configs = legacy.isComplete ? [legacy] : [];
     _activeId = _configs.isEmpty ? null : _configs.first.id;
     return true;
