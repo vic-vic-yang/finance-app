@@ -29,6 +29,31 @@ import 'theme_service.dart';
 ///     （洞察卡/CFO 用左侧 3px 色条表达，不用整卡彩底）
 ///   - 空状态：统一用 widgets/glass.dart 的 EmptyState（圆底 emoji + 标题 + 引导）
 ///   - 次要操作按钮：ghost 胶囊（描边小 pill），主操作才用实心 primary
+///
+/// 中文排版约定（新代码请遵守）：
+///   - 拉丁字母 / 数字 = Outfit；中文 = [cjkFontFallback] 回退链（系统黑体）。
+///     Outfit 不含 CJK 字形，凡是手写 GoogleFonts.outfit(...) 的地方都必须
+///     对返回值 `.copyWith(fontFamilyFallback: cjkFontFallback)`，禁止依赖隐式回退
+///     （google_fonts 方法不收 fontFamilyFallback 参数，故走 copyWith）。
+///   - 中英文混排的按钮 / 标签类文字（按钮、chip、tab、AppBar 标题、
+///     labelLarge/labelMedium）统一 copyWith(leadingDistribution: even)，
+///     让 CJK 与 Latin 行高均匀分布、垂直居中更稳；
+///     display / headline 等大字阶不加，避免改变既有行高观感。
+
+/// 中文回退链：Outfit 无 CJK 字形，中文按此序受控回退。
+/// iOS→PingFang SC；Android/Linux→Noto Sans CJK SC（思源黑体）；
+/// Windows→Microsoft YaHei；最终兜底 sans-serif。
+const List<String> cjkFontFallback = [
+  'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC',
+  'Source Han Sans SC', 'Microsoft YaHei', 'sans-serif',
+];
+
+/// 给整个 TextTheme 批量挂上 [cjkFontFallback]。
+/// TextTheme.apply 的 fontFamilyFallback 覆盖全部 15 个字阶，
+/// 包括 copyWith 里单独重建的字阶样式。
+TextTheme _applyCjkFallback(TextTheme theme) =>
+    theme.apply(fontFamilyFallback: cjkFontFallback);
+
 class AppColors {
   AppColors._();
 
@@ -105,6 +130,9 @@ class AppColors {
   static const Color warning      = Color(0xFFE0A86A);
   /// 破坏性操作（删除/清空）的警示红 —— 与收支语义色解耦，别用 expense/income
   static const Color danger       = Color(0xFFC65B4E);
+  static Color get dangerLight => _isDark
+      ? const Color(0xFF2E1A18)
+      : const Color(0xFFF6E4E1);
   static Color get warningLight => _isDark
       ? const Color(0xFF2B2118)
       : const Color(0xFFF7ECD9);
@@ -177,7 +205,8 @@ class AppTheme {
     );
 
     // Outfit 全套字号 —— 从 DESIGN.md 抄过来的等比缩放
-    final textTheme = GoogleFonts.outfitTextTheme(
+    // _applyCjkFallback 批量挂中文回退链（覆盖 copyWith 重建的字阶）
+    final textTheme = _applyCjkFallback(GoogleFonts.outfitTextTheme(
       ThemeData(brightness: isDark ? Brightness.dark : Brightness.light)
           .textTheme,
     ).apply(
@@ -220,19 +249,22 @@ class AppTheme {
         fontSize: 12, fontWeight: FontWeight.w400,
         height: 16 / 12, color: AppColors.text2,
       ),
+      // 标签类字阶加 even leading：中英文混排垂直居中更稳
+      // （google_fonts 方法不收 leadingDistribution/fontFamilyFallback，
+      //   需对返回的 TextStyle 再 copyWith）
       labelLarge: GoogleFonts.outfit(
         fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.7,
         color: AppColors.text1,
-      ),
+      ).copyWith(leadingDistribution: TextLeadingDistribution.even),
       labelMedium: GoogleFonts.outfit(
         fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.6,
         color: AppColors.text2,
-      ),
+      ).copyWith(leadingDistribution: TextLeadingDistribution.even),
       labelSmall: GoogleFonts.outfit(
         fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.4,
         color: AppColors.text3,
       ),
-    );
+    ));
 
     return ThemeData(
       useMaterial3: true,
@@ -258,6 +290,9 @@ class AppTheme {
           fontSize: 21,
           fontWeight: FontWeight.w700,
           letterSpacing: -0.4,
+        ).copyWith(
+          fontFamilyFallback: cjkFontFallback,
+          leadingDistribution: TextLeadingDistribution.even,
         ),
         iconTheme: IconThemeData(color: AppColors.text1, size: 22),
       ),
@@ -292,12 +327,14 @@ class AppTheme {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.expense, width: 1.2),
+          borderSide: const BorderSide(color: AppColors.danger, width: 1.2),
         ),
-        hintStyle:
-            GoogleFonts.outfit(color: AppColors.text3, fontSize: 14),
-        labelStyle:
-            GoogleFonts.outfit(color: AppColors.text2, fontSize: 14),
+        hintStyle: GoogleFonts.outfit(
+          color: AppColors.text3, fontSize: 14,
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
+        labelStyle: GoogleFonts.outfit(
+          color: AppColors.text2, fontSize: 14,
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
       ),
       // 主按钮：森林绿 / sage，pill 形状（高度 52）
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -311,6 +348,9 @@ class AppTheme {
             fontSize: 15,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.2,
+          ).copyWith(
+            fontFamilyFallback: cjkFontFallback,
+            leadingDistribution: TextLeadingDistribution.even,
           ),
         ),
       ),
@@ -322,6 +362,9 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: GoogleFonts.outfit(
             fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.2,
+          ).copyWith(
+            fontFamilyFallback: cjkFontFallback,
+            leadingDistribution: TextLeadingDistribution.even,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         ),
@@ -333,13 +376,23 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          textStyle: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w500),
+          textStyle: GoogleFonts.outfit(
+            fontSize: 14, fontWeight: FontWeight.w500,
+          ).copyWith(
+            fontFamilyFallback: cjkFontFallback,
+            leadingDistribution: TextLeadingDistribution.even,
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
-          textStyle: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w500),
+          textStyle: GoogleFonts.outfit(
+            fontSize: 14, fontWeight: FontWeight.w500,
+          ).copyWith(
+            fontFamilyFallback: cjkFontFallback,
+            leadingDistribution: TextLeadingDistribution.even,
+          ),
         ),
       ),
       // FAB：用主色，提升至 8px 阴影做"漂浮感"
@@ -359,9 +412,15 @@ class AppTheme {
             : AppColors.primaryLight,
         labelStyle: GoogleFonts.outfit(
           fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.text1,
+        ).copyWith(
+          fontFamilyFallback: cjkFontFallback,
+          leadingDistribution: TextLeadingDistribution.even,
         ),
         secondaryLabelStyle: GoogleFonts.outfit(
           fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary,
+        ).copyWith(
+          fontFamilyFallback: cjkFontFallback,
+          leadingDistribution: TextLeadingDistribution.even,
         ),
         side: BorderSide.none,
         shape: const StadiumBorder(),
@@ -383,7 +442,9 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: AppColors.border, width: 0.6),
         ),
-        textStyle: GoogleFonts.outfit(color: AppColors.text1, fontSize: 14),
+        textStyle: GoogleFonts.outfit(
+          color: AppColors.text1, fontSize: 14,
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
@@ -392,16 +453,16 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titleTextStyle: GoogleFonts.outfit(
           fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.text1,
-        ),
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
         contentTextStyle: GoogleFonts.outfit(
           fontSize: 14, height: 1.5, color: AppColors.text2,
-        ),
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.text1,
         contentTextStyle: GoogleFonts.outfit(
           color: AppColors.bg, fontSize: 14, fontWeight: FontWeight.w500,
-        ),
+        ).copyWith(fontFamilyFallback: cjkFontFallback),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -417,9 +478,15 @@ class AppTheme {
         unselectedLabelColor: AppColors.text3,
         labelStyle: GoogleFonts.outfit(
           fontSize: 14, fontWeight: FontWeight.w600,
+        ).copyWith(
+          fontFamilyFallback: cjkFontFallback,
+          leadingDistribution: TextLeadingDistribution.even,
         ),
         unselectedLabelStyle: GoogleFonts.outfit(
           fontSize: 14, fontWeight: FontWeight.w500,
+        ).copyWith(
+          fontFamilyFallback: cjkFontFallback,
+          leadingDistribution: TextLeadingDistribution.even,
         ),
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(color: AppColors.primary, width: 2.5),

@@ -9,7 +9,7 @@ import '../models/account.dart';
 import '../models/loan.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart' show AccountPickerSheet;
 
 /// 借贷往来：别人欠我(应收) / 我欠别人(应付)，可记借出/借入、还款、上传凭证。
@@ -78,7 +78,12 @@ class _LoansScreenState extends State<LoansScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: '借贷往来'),
+      appBar: AuraAppBar(
+        title: '借贷往来',
+        actions: [
+          HeaderAddButton(tooltip: '新增借贷', onPressed: _openCreate),
+        ],
+      ),
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -104,20 +109,13 @@ class _LoansScreenState extends State<LoansScreen> {
                 ),
               ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreate,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('记一笔借贷'),
-        shape: const StadiumBorder(),
-        extendedPadding: const EdgeInsets.symmetric(horizontal: 20),
-      ),
     );
   }
 
   Widget _empty() => const EmptyState(
         emoji: '🤝',
         title: '还没有借贷记录',
-        hint: '点右下角「记一笔借贷」，记下借出/借入，写个备注、传张转账凭证就行。',
+        hint: '点右上 + 记一笔借贷，记下借出/借入，写个备注、传张转账凭证就行。',
       );
 
   Widget _summaryCard() {
@@ -524,11 +522,11 @@ class _LoanSheetState extends State<_LoanSheet> {
               child: ElevatedButton(
                 onPressed: _saving ? null : _save,
                 child: _saving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                            strokeWidth: 2, color: AppColors.onPrimary))
                     : const Text('保存'),
               ),
             ),
@@ -539,40 +537,13 @@ class _LoanSheetState extends State<_LoanSheet> {
   }
 
   Widget _seg() {
-    Widget item(int i, String label) {
-      final sel = _dir == i;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => _dir = i),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: sel ? AppColors.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Text(label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-                    color: sel ? AppColors.onPrimary : AppColors.text2)),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border, width: 0.6),
-      ),
-      child: Row(children: [
-        item(0, '借出（别人欠我）'),
-        item(1, '借入（我欠别人）'),
-      ]),
+    return AuraSegmented<int>(
+      options: const [
+        (value: 0, label: '借出（别人欠我）'),
+        (value: 1, label: '借入（我欠别人）'),
+      ],
+      selected: _dir,
+      onChanged: (i) => setState(() => _dir = i),
     );
   }
 
@@ -903,11 +874,11 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
                 child: ElevatedButton(
                   onPressed: _busy ? null : _repay,
                   child: _busy
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2, color: AppColors.onPrimary))
                       : Text(l.isLend ? '确认收款' : '确认还款'),
                 ),
               ),

@@ -686,11 +686,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                         }
                       },
                 child: busy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2, color: AppColors.onPrimary),
                       )
                     : const Text('确认修改'),
               ),
@@ -727,15 +727,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.amber.withValues(alpha: 0.3),
+            color: AppColors.warningLight,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.amber.withValues(alpha: 0.6), width: 0.5),
+            border: Border.all(color: AppColors.warning, width: 0.5),
           ),
           child: const Text('VIP',
               style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white)),
+                  color: AppColors.warning)),
         );
       },
     );
@@ -881,7 +881,7 @@ class _ColorTile extends StatelessWidget {
               color: isMono ? null : palette.seed,
               gradient: isMono
                   ? const LinearGradient(
-                      colors: [Color(0xFF101828), Color(0xFFF3F4F6)],
+                      colors: [Color(0xFF101828), Color(0xFFF3F4F6)], // design:ok 主题色板预览
                       stops: [0.5, 0.5],
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
@@ -905,8 +905,8 @@ class _ColorTile extends StatelessWidget {
             child: selected
                 ? Icon(Icons.check_rounded,
                     color: displayColor.computeLuminance() > 0.55
-                        ? const Color(0xFF101828)
-                        : Colors.white,
+                        ? const Color(0xFF101828) // design:ok 主题色板预览
+                        : Colors.white, // design:ok 主题色板预览
                     size: 24)
                 : null,
           ),

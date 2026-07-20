@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import '../crypto/key_chain.dart';
 import '../models/account.dart';
 import '../models/ai_import.dart';
@@ -579,18 +579,17 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: 'AI 智能导入'),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _uploading ? null : _pickAndUpload,
-        tooltip: _uploading ? '上传中…' : '上传文件',
-        child: _uploading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: Colors.white),
-              )
-            : const Icon(Icons.upload_file_rounded, size: 26),
+      appBar: AuraAppBar(
+        title: 'AI 智能导入',
+        actions: [
+          HeaderAddButton(
+            tooltip: _uploading ? '上传中…' : '上传账单文件',
+            icon: Icons.upload_file_rounded,
+            onPressed: () {
+              if (!_uploading) _pickAndUpload();
+            },
+          ),
+        ],
       ),
       body: AuraBackground(
         child: _loading
@@ -615,7 +614,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         child: EmptyState(
           emoji: '🤖',
           title: '还没有 AI 导入记录',
-          hint: '点右下角「上传文件」，把图片 / PDF / CSV / Excel 交给 AI 自动记账',
+          hint: '点右上 + 上传账单文件，把图片 / PDF / CSV / Excel 交给 AI 自动记账',
           top: 0,
         ),
       );
@@ -717,12 +716,12 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
                   else if (_applyErr[item.id] != null)
                     Row(children: [
                       Icon(Icons.error_outline_rounded,
-                          size: 14, color: AppColors.expense),
+                          size: 14, color: AppColors.danger),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(_applyErr[item.id]!,
                             style: TextStyle(
-                                fontSize: 11, color: AppColors.expense)),
+                                fontSize: 11, color: AppColors.danger)),
                       ),
                       const SizedBox(width: 6),
                       InkWell(
@@ -765,7 +764,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 11, color: AppColors.expense)),
+                          fontSize: 11, color: AppColors.danger)),
                 ],
               ],
             ],
@@ -784,12 +783,12 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
     Color bg, fg;
     switch (item.status) {
       case AiImportStatus.done:
-        bg = AppColors.incomeLight;
-        fg = AppColors.income;
-        break;
-      case AiImportStatus.failed:
         bg = AppColors.expenseLight;
         fg = AppColors.expense;
+        break;
+      case AiImportStatus.failed:
+        bg = AppColors.dangerLight;
+        fg = AppColors.danger;
         break;
       case AiImportStatus.reviewReady:
       case AiImportStatus.partial:

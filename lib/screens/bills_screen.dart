@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
+import '../widgets/amount_text.dart';
 import '../widgets/glass.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
@@ -60,7 +61,6 @@ class _BillsScreenState extends State<BillsScreen>
   DateTime? _rangeEnd;
   int    _page = 1;
 
-  static final _moneyFmt = NumberFormat('#,##0.00');
   static final _moneyFmtInt = NumberFormat('#,##0');
 
   String? get _startDate {
@@ -846,7 +846,7 @@ class _BillsScreenState extends State<BillsScreen>
       useRootNavigator: true,
       barrierDismissible: true,
       barrierLabel: '筛选',
-      barrierColor: Colors.black38,
+      barrierColor: Colors.black38, // design:ok 遮罩
       transitionDuration: const Duration(milliseconds: 220),
       transitionBuilder: (_, anim, __, child) => SlideTransition(
         position: Tween<Offset>(
@@ -1293,13 +1293,17 @@ class _BillsScreenState extends State<BillsScreen>
                           color: AppColors.text2)),
                   const Spacer(),
                   if (dayIncome > 0)
-                    Text('+¥${_moneyFmt.format(dayIncome)} ',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.income)),
+                    AmountText(dayIncome,
+                        size: AmountSize.aux,
+                        tone: AmountTone.income,
+                        showSign: true),
+                  if (dayIncome > 0 && dayExpense > 0)
+                    const SizedBox(width: 10),
                   if (dayExpense > 0)
-                    Text('-¥${_moneyFmt.format(dayExpense)}',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.expense)),
+                    AmountText(-dayExpense,
+                        size: AmountSize.aux,
+                        tone: AmountTone.expense,
+                        showSign: true),
                 ]),
               ),
               const SizedBox(height: 4),
@@ -1453,11 +1457,12 @@ class _BillTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(bill.amountText,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: bill.isIncome ? AppColors.income : AppColors.expense)),
+                AmountText(
+                  bill.isIncome ? bill.amount : -bill.amount,
+                  size: AmountSize.list,
+                  tone: bill.isIncome ? AmountTone.income : AmountTone.expense,
+                  showSign: true,
+                ),
                 const SizedBox(height: 2),
                 Text(DateFormat('HH:mm').format(bill.date),
                     style: TextStyle(fontSize: 11, color: AppColors.text2)),

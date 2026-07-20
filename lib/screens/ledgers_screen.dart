@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import '../crypto/key_chain.dart';
 import '../models/ledger.dart';
 import '../services/api_service.dart';
@@ -89,6 +89,40 @@ class _LedgersScreenState extends State<LedgersScreen> {
       backgroundColor: AppColors.text1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
+  }
+
+  /// header + 入口：新建账本 / 用邀请码加入（原 PopupMenu 的两个选项，收编后保留）
+  void _openAddSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.add_box_outlined, color: AppColors.text2),
+              title: const Text('新建账本'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _createLedger();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.group_add_outlined, color: AppColors.text2),
+              title: const Text('用邀请码加入'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _joinLedger();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _createLedger() async {
@@ -362,35 +396,7 @@ class _LedgersScreenState extends State<LedgersScreen> {
       appBar: AuraAppBar(
         title: '账本管理',
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.add_rounded),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'create',
-                child: Row(children: [
-                  Icon(Icons.add_box_outlined,
-                      size: 18, color: AppColors.text2),
-                  const SizedBox(width: 10),
-                  const Text('新建账本'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'join',
-                child: Row(children: [
-                  Icon(Icons.group_add_outlined,
-                      size: 18, color: AppColors.text2),
-                  const SizedBox(width: 10),
-                  const Text('用邀请码加入'),
-                ]),
-              ),
-            ],
-            onSelected: (v) {
-              if (v == 'create') _createLedger();
-              if (v == 'join') _joinLedger();
-            },
-          ),
+          HeaderAddButton(tooltip: '新建账本', onPressed: _openAddSheet),
         ],
       ),
       body: AuraBackground(
@@ -474,11 +480,11 @@ class _LedgersScreenState extends State<LedgersScreen> {
                                 color: AppColors.primary,
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
+                              child: Text(
                                 '当前',
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.white,
+                                  color: AppColors.onPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

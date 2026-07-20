@@ -8,7 +8,7 @@ import '../models/bill.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import 'account_detail_screen.dart';
 
 double mathPow(double a, double b) => math.pow(a, b).toDouble();
@@ -81,9 +81,8 @@ class _AccountsScreenState extends State<AccountsScreen>
       appBar: AuraAppBar(
         title: '账户',
         actions: [
-          IconButton(
+          HeaderAddButton(
             tooltip: '添加账户',
-            icon: const Icon(Icons.add_rounded),
             onPressed: () => _showAccountSheet(context),
           ),
         ],
@@ -353,22 +352,12 @@ class _AccountsScreenState extends State<AccountsScreen>
     );
   }
 
-  Widget _empty() => Center(
+  Widget _empty() => const Center(
         child: EmptyState(
           emoji: '🏦',
           title: '还没有账户',
-          hint: '添加你的第一个账户，开始记录资产',
+          hint: '点右上 + 添加账户，开始记录资产',
           top: 0,
-          // 用 SizedBox 锁定宽度，避免被 ElevatedButton 主题里
-          // minimumSize: Size(infinity, 52) 撑到屏幕边
-          action: SizedBox(
-            width: 220,
-            child: ElevatedButton.icon(
-              onPressed: () => _showAccountSheet(context),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加账户'),
-            ),
-          ),
         ),
       );
 }
@@ -1009,7 +998,7 @@ class _AccountSheetState extends State<_AccountSheet> {
           if (_errors['autoDeposit'] != null) ...[
             const SizedBox(height: 4),
             Text(_errors['autoDeposit']!,
-                style: const TextStyle(fontSize: 12, color: Colors.red)),
+                style: const TextStyle(fontSize: 12, color: AppColors.danger)),
           ],
           const SizedBox(height: 6),
           _hintTip(
@@ -1134,7 +1123,7 @@ class _AccountSheetState extends State<_AccountSheet> {
       if (_errors['repaymentMethod'] != null) ...[
         const SizedBox(height: 4),
         Text(_errors['repaymentMethod']!,
-            style: const TextStyle(fontSize: 12, color: Colors.red)),
+            style: const TextStyle(fontSize: 12, color: AppColors.danger)),
       ],
       const SizedBox(height: 12),
       // 月供预览卡
@@ -1244,12 +1233,12 @@ class _AccountSheetState extends State<_AccountSheet> {
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: hasError ? Colors.red : AppColors.border),
+                  color: hasError ? AppColors.danger : AppColors.border),
             ),
             child: Row(children: [
               Icon(Icons.calendar_today_outlined,
                   size: 16,
-                  color: hasError ? Colors.red : AppColors.text2),
+                  color: hasError ? AppColors.danger : AppColors.text2),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1259,7 +1248,7 @@ class _AccountSheetState extends State<_AccountSheet> {
                   style: TextStyle(
                       fontSize: 13,
                       color: value == null
-                          ? (hasError ? Colors.red : AppColors.text2)
+                          ? (hasError ? AppColors.danger : AppColors.text2)
                           : AppColors.text1),
                 ),
               ),
@@ -1275,7 +1264,7 @@ class _AccountSheetState extends State<_AccountSheet> {
         if (hasError) ...[
           const SizedBox(height: 4),
           Text(errorText,
-              style: const TextStyle(fontSize: 12, color: Colors.red)),
+              style: const TextStyle(fontSize: 12, color: AppColors.danger)),
         ],
       ],
     );
@@ -1405,10 +1394,10 @@ class _AccountSheetState extends State<_AccountSheet> {
                     BorderSide(color: AppColors.primary, width: 1.5)),
             errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.red)),
+                borderSide: const BorderSide(color: AppColors.danger)),
             focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.red, width: 1.5)),
+                borderSide: const BorderSide(color: AppColors.danger, width: 1.5)),
           ),
         ),
         if (helper != null && errorText == null) ...[
@@ -1865,11 +1854,11 @@ class _AccountSheetState extends State<_AccountSheet> {
                             color: AppColors.primary, width: 1.5)),
                     errorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.red)),
+                        borderSide: const BorderSide(color: AppColors.danger)),
                     focusedErrorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: Colors.red, width: 1.5)),
+                            color: AppColors.danger, width: 1.5)),
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 14),
                   ),
@@ -1972,18 +1961,18 @@ class _AccountSheetState extends State<_AccountSheet> {
             margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.red.shade50,
-              border: Border.all(color: Colors.red.shade200),
+              color: AppColors.dangerLight,
+              border: Border.all(color: AppColors.danger),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                const Icon(Icons.error_outline, color: AppColors.danger, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _banner!,
-                    style: TextStyle(fontSize: 13, color: Colors.red.shade800),
+                    style: TextStyle(fontSize: 13, color: AppColors.danger),
                   ),
                 ),
               ],

@@ -6,7 +6,7 @@ import '../models/account.dart';
 import '../models/savings_goal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -95,12 +95,12 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
   /// 「Quiet Luxury」渐变色板 —— 每个目标卡按序取一套，代替参考设计里的实拍图
   static const List<List<Color>> _gradients = [
-    [Color(0xFF1B3022), Color(0xFF3C6049)], // 森林绿
-    [Color(0xFF2E3A40), Color(0xFF53666E)], // 雾岩灰
-    [Color(0xFF5C4A40), Color(0xFF8C7263)], // 暖陶褐
-    [Color(0xFF34453C), Color(0xFF5E7866)], // 深苔绿
-    [Color(0xFF2A2E3A), Color(0xFF474D60)], // 暮霭蓝
-    [Color(0xFF4A3B4A), Color(0xFF6E5670)], // 紫罗兰灰
+    [Color(0xFF1B3022), Color(0xFF3C6049)], // design:ok 目标卡装饰渐变（森林绿）
+    [Color(0xFF2E3A40), Color(0xFF53666E)], // design:ok 目标卡装饰渐变（雾岩灰）
+    [Color(0xFF5C4A40), Color(0xFF8C7263)], // design:ok 目标卡装饰渐变（暖陶褐）
+    [Color(0xFF34453C), Color(0xFF5E7866)], // design:ok 目标卡装饰渐变（深苔绿）
+    [Color(0xFF2A2E3A), Color(0xFF474D60)], // design:ok 目标卡装饰渐变（暮霭蓝）
+    [Color(0xFF4A3B4A), Color(0xFF6E5670)], // design:ok 目标卡装饰渐变（紫罗兰灰）
   ];
 
   @override
@@ -110,15 +110,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
       appBar: AuraAppBar(
         title: '储蓄目标',
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: IconButton(
-              tooltip: '新建目标',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-              icon: Icon(Icons.add_rounded, color: AppColors.primary, size: 26),
-              onPressed: () => _openEdit(),
-            ),
+          HeaderAddButton(
+            tooltip: '新建目标',
+            onPressed: () => _openEdit(),
           ),
         ],
       ),
@@ -139,7 +133,6 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       _goalCard(_goals[i], i),
                       const SizedBox(height: 18),
                     ],
-                  _addCard(),
                   const SizedBox(height: 36),
                   _strategiesSection(),
                 ],
@@ -178,13 +171,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       fontWeight: FontWeight.w600,
                       color: AppColors.text2)),
               const SizedBox(width: 12),
-              Text(
-                '¥${totalSaved.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                ),
+              AmountText(
+                totalSaved,
+                size: AmountSize.card,
+                decimals: 0,
+                color: AppColors.primary,
               ),
             ],
           ),
@@ -193,12 +184,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
     );
   }
 
-  Widget _emptyHint() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(
-          '还没有储蓄目标，点下面的卡片开启第一段旅程。',
-          style: TextStyle(fontSize: 14, color: AppColors.text2),
-        ),
+  Widget _emptyHint() => const EmptyState(
+        emoji: '🎯',
+        title: '还没有储蓄目标',
+        hint: '点右上 + 新建目标，开启第一段旅程。',
+        top: 8,
       );
 
   // ── 目标卡：渐变大卡 + 底部悬浮玻璃信息面板 + 发光进度条 ─────────
@@ -246,7 +236,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     g.icon ?? '🎯',
                     style: TextStyle(
                       fontSize: 64,
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: Colors.white.withValues(alpha: 0.16), // design:ok 装饰渐变前景
                     ),
                   ),
                 ),
@@ -258,18 +248,18 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
+                        color: Colors.white.withValues(alpha: 0.22), // design:ok 装饰渐变前景
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.check_circle,
-                            size: 14, color: Colors.white),
+                            size: 14, color: Colors.white), // design:ok 装饰渐变前景
                         SizedBox(width: 4),
                         Text('已达成',
                             style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white)),
+                                color: Colors.white)), // design:ok 装饰渐变前景
                       ]),
                     ),
                   ),
@@ -281,8 +271,6 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   child: GlassCard(
                     radius: 20,
                     blur: 20,
-                    opacity: 0.62,
-                    tint: Colors.white,
                     showShadow: false,
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                     child: Column(
@@ -293,10 +281,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           g.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A2C20),
+                            color: AppColors.text1,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -304,9 +292,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF4B5A50),
+                            color: AppColors.text2,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -314,37 +302,37 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              child: RichText(
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                text: TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text: '¥${g.currentSaved.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1A2C20),
-                                      ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Flexible(
+                                    child: AmountText(
+                                      g.currentSaved,
+                                      size: AmountSize.list,
+                                      decimals: 0,
                                     ),
-                                    TextSpan(
-                                      text:
-                                          ' / ¥${g.targetAmount.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF4B5A50),
-                                      ),
+                                  ),
+                                  Text(' / ',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.text2)),
+                                  Flexible(
+                                    child: AmountText(
+                                      g.targetAmount,
+                                      size: AmountSize.aux,
+                                      decimals: 0,
+                                      color: AppColors.text2,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                             Text(
                               '${pct.toStringAsFixed(0)}%',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF1B3022),
+                                color: AppColors.primary,
                               ),
                             ),
                           ],
@@ -356,7 +344,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF1B3022)
+                                color: AppColors.primary
                                     .withValues(alpha: 0.22 * p),
                                 blurRadius: 12,
                                 offset: const Offset(0, 2),
@@ -369,9 +357,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
                               value: p,
                               minHeight: 8,
                               backgroundColor:
-                                  const Color(0xFF1B3022).withValues(alpha: 0.12),
-                              valueColor: const AlwaysStoppedAnimation(
-                                  Color(0xFF1B3022)),
+                                  AppColors.primary.withValues(alpha: 0.12),
+                              valueColor:
+                                  AlwaysStoppedAnimation(AppColors.primary),
                             ),
                           ),
                         ),
@@ -382,50 +370,6 @@ class _GoalsScreenState extends State<GoalsScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  // ── 虚线「新建目标」卡 ─────────────────────────────────────────
-  Widget _addCard() {
-    return GestureDetector(
-      onTap: () => _openEdit(),
-      child: Container(
-        height: 150,
-        decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.28),
-            width: 1.4,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                boxShadow: AppTheme.ambientShadow(
-                    opacity: 0.22, blur: 18, offset: const Offset(0, 6)),
-              ),
-              child: Icon(Icons.add_rounded,
-                  color: AppColors.onPrimary, size: 28),
-            ),
-            const SizedBox(height: 12),
-            Text('描绘一个目标',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary)),
-            const SizedBox(height: 2),
-            Text('开启新的旅程',
-                style: TextStyle(fontSize: 13, color: AppColors.text2)),
-          ],
         ),
       ),
     );
@@ -673,15 +617,12 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                         width: 44,
                         decoration: BoxDecoration(
                           color: selected
-                              ? Theme.of(context)
-                                  .primaryColor
-                                  .withValues(alpha: 0.12)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
+                              ? AppColors.primary.withValues(alpha: 0.12)
+                              : AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(10),
                           border: selected
                               ? Border.all(
-                                  color: Theme.of(context).primaryColor,
-                                  width: 1.5)
+                                  color: AppColors.primary, width: 1.5)
                               : null,
                         ),
                         alignment: Alignment.center,
@@ -700,7 +641,6 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                 decoration: const InputDecoration(
                   labelText: '目标名',
                   hintText: '比如：半年存够 2 万',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -713,7 +653,6 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                 decoration: const InputDecoration(
                   labelText: '目标金额',
                   prefixText: '¥ ',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -721,7 +660,7 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
               // ── 绑定账户 ──
               Text(
                 '绑定账户（可选，绑定后自动用余额追踪进度）',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: AppColors.text2),
               ),
               const SizedBox(height: 6),
               _loadingAccounts
@@ -749,7 +688,7 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                             '当前余额 ¥${acc.balance.toStringAsFixed(0)}，'
                             '关闭则从 0 开始只算增量',
                             style: TextStyle(
-                                fontSize: 11, color: Colors.grey.shade600),
+                                fontSize: 11, color: AppColors.text3),
                           ),
                         ],
                       ),
@@ -766,20 +705,20 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                     padding: const EdgeInsets.all(8),
                     margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(6),
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
                       children: [
                         Icon(Icons.info_outline,
-                            size: 14, color: Colors.blue.shade700),
+                            size: 14, color: AppColors.primary),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             '现有 ¥${acc.balance.toStringAsFixed(0)} 不计入进度，'
                             '仅跟踪新增存款',
                             style: TextStyle(
-                                fontSize: 11, color: Colors.blue.shade700),
+                                fontSize: 11, color: AppColors.primary),
                           ),
                         ),
                       ],
@@ -805,7 +744,6 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                 child: InputDecorator(
                   decoration: const InputDecoration(
                     labelText: '截止日期（可空）',
-                    border: OutlineInputBorder(),
                   ),
                   child: Row(
                     children: [
@@ -831,11 +769,11 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
               FilledButton(
                 onPressed: _saving ? null : _save,
                 child: _saving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2, color: AppColors.onPrimary),
                       )
                     : const Text('保存'),
               ),
@@ -851,10 +789,9 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
     final acc = _selectedAccount;
     return InkWell(
       onTap: _openAccountPicker,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: InputDecorator(
         decoration: const InputDecoration(
-          border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
         child: Row(
@@ -867,7 +804,7 @@ class _GoalEditSheetState extends State<_GoalEditSheet> {
                 acc?.name ?? '不绑定（手动追踪）',
                 style: TextStyle(
                   fontSize: 14,
-                  color: acc != null ? AppColors.text1 : Colors.grey,
+                  color: acc != null ? AppColors.text1 : AppColors.text3,
                 ),
               ),
             ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../models/category.dart';
 import '../services/api_service.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart' show promptCategoryEditor;
 
 /// 分类管理：按 支出 / 收入 分组，一级分类可展开看二级。
@@ -181,7 +181,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
     final roots = _roots;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: '分类管理'),
+      appBar: AuraAppBar(
+        title: '分类管理',
+        actions: [
+          HeaderAddButton(tooltip: '新建分类', onPressed: _createParent),
+        ],
+      ),
       body: AuraBackground(
         child: Column(
           children: [
@@ -195,7 +200,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
                             emoji: '🏷️',
                             title:
                                 '还没有${_type == 'expense' ? '支出' : '收入'}分类',
-                            hint: '点右下角「新建分类」创建第一个',
+                            hint: '点右上 + 新建分类',
                             top: 0,
                           ),
                         )
@@ -210,57 +215,22 @@ class _CategoryManageScreenState extends State<CategoryManageScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createParent,
-        icon: const Icon(Icons.add),
-        label: const Text('新建分类'),
-      ),
     );
   }
 
   // ── 支出 / 收入 切换 ───────────────────────────────────────
   Widget _typeToggle() {
-    Widget seg(String label, String value) {
-      final on = _type == value;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => _type = value),
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            margin: const EdgeInsets.all(3),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: on ? AppColors.surface : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: on
-                  ? [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2))
-                    ]
-                  : null,
-            ),
-            child: Center(
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      color: on ? AppColors.text1 : AppColors.text3)),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: AuraSegmented<String>(
+        variant: AuraSegmentedVariant.float,
+        options: const [
+          (value: 'expense', label: '支出'),
+          (value: 'income', label: '收入'),
+        ],
+        selected: _type,
+        onChanged: (v) => setState(() => _type = v),
       ),
-      child: Row(children: [seg('支出', 'expense'), seg('收入', 'income')]),
     );
   }
 

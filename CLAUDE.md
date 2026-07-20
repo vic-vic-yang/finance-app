@@ -46,5 +46,5 @@ Consequence: account **names** and bill **notes/merchants** are only readable on
 ### AI import & input flows
 
 - **File import** (`screens/ai_imports_screen.dart`, `_autoApplyOne`): fetch drafts → per-draft resolve the real funding account (`funding_matcher.dart` normalize + match decrypted account names + `payment_method_map.dart` memory; prompts to confirm unmatched, remembers) → split into bills vs transfers by `direction` → encrypt notes → `aiApplyImport(bills, transfers)`.
-- **NL一句话记账**: `widgets/nl_input_section.dart` → `ApiService.aiParseText` → draft confirm card. **Voice**: `speech_to_text` mic in the `add_bill_screen` note field (on-device STT → text, audio never leaves device).
+- **NL记账**: 独立输入组件（旧 `widgets/nl_input_section.dart`）已移除，对话式记账/查询统一走 `screens/chat_screen.dart`（司库助手）；`ApiService.aiParseText` 接口仍保留但当前无调用方。
 - Shared pickers live in `add_bill_screen.dart` and are reused (`CategoryPickerSheet`, `AccountPickerSheet`).

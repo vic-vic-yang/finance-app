@@ -156,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 88,
                         padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Colors.white, // design:ok 品牌 logo 白色底砖装饰
                           borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(

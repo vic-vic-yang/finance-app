@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../services/llm_config_service.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import 'ai_model_edit_screen.dart';
 
 /// AI 模型配置（BYOK）：
@@ -164,7 +164,15 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: 'AI 模型'),
+      appBar: AuraAppBar(
+        title: 'AI 模型',
+        actions: [
+          HeaderAddButton(
+            tooltip: '添加新模型',
+            onPressed: () => _addOrEdit(),
+          ),
+        ],
+      ),
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -231,23 +239,11 @@ class _AiModelConfigScreenState extends State<AiModelConfigScreen> {
             if (_configs.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 14, 8, 14),
-                child: Text('还没有配置，点击下方「添加新模型」开始',
+                child: Text('还没有配置，点右上 + 添加新模型',
                     style: TextStyle(fontSize: 12.5, color: AppColors.text3)),
               )
             else
               for (final c in _configs) _configTile(c),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _addOrEdit(),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('添加新模型'),
-                ),
-              ),
-            ),
           ],
         ),
       );

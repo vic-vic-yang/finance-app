@@ -35,7 +35,7 @@ class WelcomeScreen extends StatelessWidget {
                       height: 96,
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Colors.white, // design:ok 品牌 logo 白色底砖装饰
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
+import '../core/motion.dart';
 import '../core/theme.dart';
 import '../crypto/key_chain.dart';
 import '../models/bill.dart';
@@ -13,7 +14,9 @@ import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
-import '../widgets/glass.dart';
+import '../widgets/chart_kit.dart';
+import '../widgets/entrance.dart';
+import '../widgets/siku_ui.dart';
 import 'account_detail_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
@@ -60,6 +63,12 @@ class _HomeScreenState extends State<HomeScreen>
   double _familyTotal = 0;
   double _othersTotal = 0;
 
+  /// 当月日终总资产序列（全局口径：与 assetSummary.total 同源，
+  /// 后端以 familyTotal 为终点倒推，含其他成员聚合值但不泄露明细）。
+  /// 取自 getStats 响应已有的 assetTrend 字段，无新增网络请求；
+  /// hero 结余卡内净资产趋势 Sparkline 的数据源。
+  List<double> _assetTrend = [];
+
   /// AI 洞察 feed
   List<AiInsight> _insights = [];
 
@@ -68,6 +77,18 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 是否存在 critical 级 CFO 待办（用于首页卡醒目化）
   bool _cfoHasCritical = false;
+
+  /// 卡片 stagger 入场「只播一次」标志（State 生命周期内）：
+  /// 首个内容帧渲染后置 true，之后 refreshBus / 下拉刷新重建时
+  /// Entrance 以 play=false 直接呈现终态，不再重播。
+  bool _entrancePlayed = false;
+
+  /// hero 净资产大数字 count-up「只播一次」标志
+  bool _heroCounted = false;
+
+  /// hero 资产趋势 sparkline 首次描绘动画「只播一次」标志
+  /// （与 count-up 同款 State 生命周期标志位模式）
+  bool _trendDrawn = false;
 
   @override
   void initState() {
@@ -84,6 +105,38 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onBump() {
     if (mounted) _load();
+  }
+
+  /// 首个内容帧后置「入场已播」标志。无需 setState：本帧 Entrance 已开演，
+  /// 此后重建读到的新值自然生效。
+  void _markEntrancePlayed() {
+    if (_entrancePlayed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _entrancePlayed = true;
+    });
+  }
+
+  /// 包一层入场动画（fade + 上移 12px，stagger 40ms，只播一次）。
+  /// 系统「减弱动效」时 Entrance 内部直接呈现终态。
+  Widget _entrance(int index, Widget child) =>
+      Entrance(index: index, play: !_entrancePlayed, child: child);
+
+  /// hero 净资产大数字：首次拿到数据从 0 count-up（[Motion.emphasis] 600ms /
+  /// easeOutExpo），只播一次；之后刷新直接显示新值。
+  /// 系统「减弱动效」时直接显示目标值。
+  Widget _heroAmount(double netWorth, Color fg) {
+    if (_heroCounted || Motion.reduced(context)) {
+      return AmountText(netWorth, size: AmountSize.hero, color: fg);
+    }
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: netWorth),
+      duration: Motion.emphasis,
+      curve: Motion.emphasized,
+      onEnd: () {
+        if (mounted) setState(() => _heroCounted = true);
+      },
+      builder: (_, v, __) => AmountText(v, size: AmountSize.hero, color: fg),
+    );
   }
 
   Future<void> _load() async {
@@ -141,6 +194,9 @@ class _HomeScreenState extends State<HomeScreen>
         final asset = (results[1]['assetSummary'] as Map?) ?? {};
         _familyTotal = (asset['total']  as num?)?.toDouble() ?? 0;
         _othersTotal = (asset['others'] as num?)?.toDouble() ?? 0;
+        _assetTrend = ((results[1]['assetTrend'] as List?) ?? [])
+            .map((p) => ((p as Map)['balance'] as num?)?.toDouble() ?? 0.0)
+            .toList();
         _insights = (results[3]['insights'] as List? ?? [])
             .map((i) => AiInsight.fromJson(i as Map<String, dynamic>)).toList();
         _cfoCount = cfoProps.length;
@@ -165,50 +221,56 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final slivers = <Widget>[_appBar()];
+    if (_loading) {
+      slivers.add(SliverFillRemaining(
+        child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      ));
+    } else {
+      // 首个内容帧后置「入场已播」标志：refreshBus / 下拉刷新重建时不再重播
+      _markEntrancePlayed();
+      var order = 0;
+      slivers.add(SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+        sliver: SliverToBoxAdapter(child: _entrance(order++, _summaryCard())),
+      ));
+      // 我的账户紧跟结余卡（净资产拆解已整合进统计页）
+      if (_accounts.isNotEmpty) {
+        slivers.add(_sectionTitleWithAction(
+          '我的账户',
+          '管理',
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AccountsScreen()),
+          ),
+          entranceIndex: order++,
+        ));
+        slivers.add(
+            SliverToBoxAdapter(child: _entrance(order++, _accountsList())));
+      } else {
+        slivers.add(
+            SliverToBoxAdapter(child: _entrance(order++, _noAccount())));
+      }
+      // AI 管家：CFO 复盘 + 洞察合成一条流（都为空时整块不显示）
+      if (_insights.isNotEmpty || _cfoCount > 0) {
+        slivers.add(_sectionTitleWithAction(
+          '🤖 AI 管家',
+          '查看全部',
+          _showAllInsightsSheet,
+          entranceIndex: order++,
+        ));
+        slivers.add(
+            SliverToBoxAdapter(child: _entrance(order++, _insightsList())));
+      }
+      slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 100)));
+    }
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: _load,
-        child: CustomScrollView(
-          slivers: [
-            _appBar(),
-            if (_loading)
-              SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              )
-            else ...[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                sliver: SliverToBoxAdapter(child: _summaryCard()),
-              ),
-              // 我的账户紧跟结余卡（净资产拆解已整合进统计页）
-              if (_accounts.isNotEmpty) ...[
-                _sectionTitleWithAction(
-                  '我的账户',
-                  '管理',
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AccountsScreen()),
-                  ),
-                ),
-                SliverToBoxAdapter(child: _accountsList()),
-              ] else
-                SliverToBoxAdapter(child: _noAccount()),
-              // AI 管家：CFO 复盘 + 洞察合成一条流（都为空时整块不显示）
-              if (_insights.isNotEmpty || _cfoCount > 0) ...[
-                _sectionTitleWithAction(
-                  '🤖 AI 管家',
-                  '查看全部',
-                  _showAllInsightsSheet,
-                ),
-                SliverToBoxAdapter(child: _insightsList()),
-              ],
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
-          ],
-        ),
+        child: CustomScrollView(slivers: slivers),
       ),
     );
   }
@@ -576,13 +638,17 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// hero 卡「三位一体」同口径布局：
+  ///   大数字 = 净资产存量（assetSummary.total，getStats 全局口径：
+  ///   我的 + 共享 + 其他成员聚合，一次计算，不随账户区 tab 联动）
+  ///   趋势   = assetTrend（后端以同一 total 为终点倒推，与数字严格同口径）
+  ///   底部行 = 本月收入 / 支出（流量指标，与存量各司其职）
   Widget _summaryCard() {
-    final now     = DateTime.now();
-    final balance = _income - _expense;
-    final fg      = AppColors.onPrimaryGradient;
+    final netWorth = _familyTotal;
+    final fg       = AppColors.onPrimaryGradient;
     return Container(
       margin: const EdgeInsets.only(top: 6, bottom: 4),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: AppColors.primaryGradient,
@@ -600,21 +666,63 @@ class _HomeScreenState extends State<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 记一笔已移到底部导航中央「+」
-          Text('${now.year}年${now.month}月结余',
+          Text('净资产',
               style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12)),
           const SizedBox(height: 4),
-          Text(fmtMoney(balance),
-              style: TextStyle(
-                  color: fg, fontSize: 28,
-                  fontWeight: FontWeight.bold, letterSpacing: -0.8)),
+          _heroAmount(netWorth, fg),
+          // 净资产趋势 sparkline：与上方大数字同口径（assetTrend 终点即
+          // assetSummary.total），数据取自已有的 getStats 响应，无新增请求。
+          // 数据不足（< 2 点）时整条隐藏，上下间距自然回落、布局不塌陷。
+          if (_assetTrend.length >= 2) ...[
+            const SizedBox(height: 12),
+            _heroSparkline(fg),
+          ],
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _summaryItem('收入', _income)),
+            Expanded(child: _summaryItem('本月收入', _income)),
             Container(width: 1, height: 28, color: fg.withValues(alpha: 0.2)),
-            Expanded(child: _summaryItem('支出', _expense)),
+            Expanded(child: _summaryItem('本月支出', _expense)),
           ]),
         ],
       ),
+    );
+  }
+
+  /// hero 卡内净资产趋势 sparkline：颜色用 `onPrimaryGradient`（渐变卡上
+  /// 不能用 primary 绿，会看不见），fill 同色 10% → 0 渐隐；宽度经
+  /// LayoutBuilder 撑满卡内可用宽。首次拿到数据按 [Motion.emphasis]
+  /// 描绘一次（progress 0→1，只播一次，与 count-up 同款标志位模式）；
+  /// 系统「减弱动效」时直接呈现完整线条。
+  Widget _heroSparkline(Color fg) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        if (_trendDrawn || Motion.reduced(context)) {
+          return Sparkline(
+            values: _assetTrend,
+            height: 44,
+            width: w,
+            color: fg,
+            fillOpacity: 0.10,
+          );
+        }
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: Motion.emphasis,
+          curve: Motion.emphasized,
+          onEnd: () {
+            if (mounted) setState(() => _trendDrawn = true);
+          },
+          builder: (_, p, __) => Sparkline(
+            values: _assetTrend,
+            height: 44,
+            width: w,
+            color: fg,
+            fillOpacity: 0.10,
+            progress: p,
+          ),
+        );
+      },
     );
   }
 
@@ -627,9 +735,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Text(label, style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11.5)),
           const SizedBox(height: 3),
-          Text(fmtMoney(amt),
-              style: TextStyle(
-                  color: fg, fontSize: 15, fontWeight: FontWeight.w600)),
+          AmountText(amt, size: AmountSize.card, color: fg),
         ],
       ),
     );
@@ -710,13 +816,9 @@ class _HomeScreenState extends State<HomeScreen>
       visibleList = _accounts; // "全部" tab: 仍然只能展示自己可见的，其他成员合并成占位卡
     }
 
-    // 标题数字：
-    // - "全部" tab → 家庭总额（含别人私人）
-    // - 其他 → 当前 list 之和
-    final headerTotal = (showTabs && _assetTab == 2)
-        ? _familyTotal
-        : visibleList.fold<double>(0.0, (s, a) => s + a.balance);
-
+    // 合计金额已上移到 hero 卡「净资产」（全局口径），此处标题行只保留
+    // 口径标签（我的 / 共享 / 家庭），避免一屏两个相同大数字重复；
+    // 右侧入口由外层 section 标题的「我的账户 · 管理」承担。
     final showOthersCard = showTabs && _assetTab == 2 && hasOthers;
 
     return Column(
@@ -725,14 +827,8 @@ class _HomeScreenState extends State<HomeScreen>
         Padding(
           padding: EdgeInsets.fromLTRB(20, 0, 20, showTabs ? 8 : 10),
           child: Row(children: [
-            Text(showTabs ? _assetLabel() : '总资产  ',
+            Text(showTabs ? _assetLabel() : '总资产',
                 style: TextStyle(color: AppColors.text2, fontSize: 13)),
-            const SizedBox(width: 4),
-            Text(fmtMoney(headerTotal),
-                style: TextStyle(
-                    color: AppColors.text1,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
           ]),
         ),
         if (showTabs)
@@ -761,53 +857,21 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String _assetLabel() {
-    if (_assetTab == 0) return '我的资产  ';
-    if (_assetTab == 1) return '共享资产  ';
-    return '家庭总资产  ';
+    if (_assetTab == 0) return '我的资产';
+    if (_assetTab == 1) return '共享资产';
+    return '家庭总资产';
   }
 
   Widget _assetTabs(int mineCount, int sharedCount, int allCount) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(children: [
-        _assetTabItem(0, '我的', mineCount),
-        _assetTabItem(1, '共享', sharedCount),
-        _assetTabItem(2, '全部', allCount),
-      ]),
-    );
-  }
-
-  Widget _assetTabItem(int idx, String label, int count) {
-    final sel = _assetTab == idx;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _assetTab = idx),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: sel ? AppColors.surface : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: sel
-                ? [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1))
-                  ]
-                : null,
-          ),
-          child: Text('$label · $count',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-                  color: sel ? AppColors.text1 : AppColors.text2)),
-        ),
-      ),
+    return AuraSegmented<int>(
+      variant: AuraSegmentedVariant.float,
+      options: [
+        (value: 0, label: '我的 · $mineCount'),
+        (value: 1, label: '共享 · $sharedCount'),
+        (value: 2, label: '全部 · $allCount'),
+      ],
+      selected: _assetTab,
+      onChanged: (i) => setState(() => _assetTab = i),
     );
   }
 
@@ -841,30 +905,22 @@ class _HomeScreenState extends State<HomeScreen>
       );
 
   SliverToBoxAdapter _sectionTitleWithAction(
-          String t, String actionText, VoidCallback onTap) =>
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-          child: Row(children: [
-            Text(t,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text1)),
-            const Spacer(),
-            GestureDetector(
-              onTap: onTap,
-              child: Row(children: [
-                Text(actionText,
-                    style: TextStyle(
-                        fontSize: 13, color: AppColors.primary)),
-                Icon(Icons.chevron_right_rounded,
-                    size: 16, color: AppColors.primary),
-              ]),
-            ),
-          ]),
-        ),
-      );
+    String t,
+    String actionText,
+    VoidCallback onTap, {
+    int? entranceIndex,
+  }) {
+    final child = SectionHeader(
+      title: t,
+      actionLabel: actionText,
+      onTap: onTap,
+      top: 20,
+      bottom: 10,
+    );
+    return SliverToBoxAdapter(
+      child: entranceIndex == null ? child : _entrance(entranceIndex, child),
+    );
+  }
 
 }
 

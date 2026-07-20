@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
-import '../../widgets/glass.dart';
+import '../../widgets/siku_ui.dart';
 
 final NumberFormat _money = NumberFormat('#,##0.##', 'zh_CN');
 final NumberFormat _money0 = NumberFormat('#,##0', 'zh_CN');
@@ -52,6 +52,9 @@ class ToolNumField extends StatelessWidget {
 }
 
 /// 两段式胶囊切换（如 等额本息 / 等额本金）
+///
+/// 薄封装：视觉已统一进 [AuraSegmented]（solid 变体），保留本类
+/// 仅为兼容 tools 各页既有调用签名（labels / index / onChanged）。
 class ToolSegToggle extends StatelessWidget {
   const ToolSegToggle({
     super.key,
@@ -66,44 +69,12 @@ class ToolSegToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border, width: 0.6),
-      ),
-      child: Row(
-        children: [
-          for (int i = 0; i < labels.length; i++)
-            Expanded(
-              child: GestureDetector(
-                onTap: () => onChanged(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color: index == i ? AppColors.primary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Text(
-                    labels[i],
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight:
-                          index == i ? FontWeight.w600 : FontWeight.w500,
-                      color: index == i
-                          ? AppColors.onPrimary
-                          : AppColors.text2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return AuraSegmented<int>(
+      options: [
+        for (var i = 0; i < labels.length; i++) (value: i, label: labels[i]),
+      ],
+      selected: index,
+      onChanged: onChanged,
     );
   }
 }

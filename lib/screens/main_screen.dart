@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/update_checker.dart';
@@ -14,8 +15,23 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen>
+    with SingleTickerProviderStateMixin {
   int _index = 0;
+
+  /// tab 转场滑动方向：目标 index 更大 → 新内容从右侧（+16px）滑入，反之左侧
+  double _slideFrom = 1;
+
+  /// tab 转场控制器：fade 0→1 + 水平 ±16→0，时长 [Motion.base]。
+  /// 动画只作用在 IndexedStack 整体外层（Opacity/Transform），不卸载任何
+  /// 子页面 —— 4 个 tab 的 State / 滚动位置 / 已加载数据全部保活。
+  late final AnimationController _tabCtrl = AnimationController(
+    vsync: this,
+    duration: Motion.base,
+    value: 1, // 首帧即终态：冷启动不播转场
+  );
+  late final CurvedAnimation _tabAnim =
+      CurvedAnimation(parent: _tabCtrl, curve: Motion.standard);
 
   @override
   void initState() {
@@ -24,6 +40,28 @@ class _MainScreenState extends State<MainScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) UpdateChecker.check(context);
     });
+  }
+
+  @override
+  void dispose() {
+    _tabAnim.dispose();
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  /// 统一切 tab 入口：决定滑入方向后重播转场。
+  /// 系统「减弱动效」时直接落终态（见 Motion.reduced）。
+  void _switchTab(int i) {
+    if (i == _index) return;
+    setState(() {
+      _slideFrom = i > _index ? 1 : -1;
+      _index = i;
+    });
+    if (Motion.reduced(context)) {
+      _tabCtrl.value = 1;
+    } else {
+      _tabCtrl.forward(from: 0);
+    }
   }
 
   // tab 顺序：0=主页 1=账单 2=统计 3=我的
@@ -45,13 +83,14 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     // 直接监听主题服务 —— 切换主题时本 widget 强制 rebuild，
     // 所有子页面也跟着重建，AppColors getter 拿到新色。
+    // 主题 rebuild 不触碰 _tabCtrl，不会误播 tab 转场。
     return AnimatedBuilder(
       animation: ThemeService.instance.revision,
       builder: (_, __) {
         // 故意不用 const —— 每次 rebuild 创建新的 widget 实例，
         // 让 Flutter 重新走 build() 路径（State 由 AutomaticKeepAliveClientMixin 保活）
         final pages = <Widget>[
-          HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
+          HomeScreen(onSwitchTab: _switchTab),
           const BillsScreen(isTab: true),
           StatsScreen(),
           const ProfileScreen(),
@@ -62,7 +101,23 @@ class _MainScreenState extends State<MainScreen> {
           body: AuraBackground(
             child: Stack(
               children: [
-                IndexedStack(index: _index, children: pages),
+                // tab 转场：只对 IndexedStack 整体做 Opacity/Transform，
+                // stack 本身常驻 —— 子页面 State / 滚动位置 / 数据全部保活
+                AnimatedBuilder(
+                  animation: _tabAnim,
+                  child: IndexedStack(index: _index, children: pages),
+                  builder: (context, child) {
+                    final t = _tabAnim.value;
+                    if (t >= 1) return child!;
+                    return Opacity(
+                      opacity: t,
+                      child: Transform.translate(
+                        offset: Offset(16 * _slideFrom * (1 - t), 0),
+                        child: child,
+                      ),
+                    );
+                  },
+                ),
                 // 底部渐隐：内容滚到底淡出为背景色，避免透过悬浮导航栏周围的空隙看到内容
                 Positioned(
                   left: 0,
@@ -93,7 +148,7 @@ class _MainScreenState extends State<MainScreen> {
             labels: _labels,
             icons: _icons,
             activeIcons: _activeIcons,
-            onTap: (i) => setState(() => _index = i),
+            onTap: _switchTab,
             // 中央「+」记一笔（保存后 AddBillScreen 会 bumpRefresh 通知各页刷新）
             onAdd: () => Navigator.pushNamed(context, '/add'),
           ),

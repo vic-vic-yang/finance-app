@@ -5,7 +5,7 @@ import '../crypto/key_chain.dart';
 import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import 'recategorize_other_screen.dart';
 
 class CfoScreen extends StatefulWidget {
@@ -129,9 +129,9 @@ class _CfoScreenState extends State<CfoScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _items.isEmpty
-                ? Center(
-                    child: Text('目前一切正常 ✅',
-                        style: TextStyle(color: AppColors.text2)))
+                ? const Center(
+                    child: EmptyState(
+                        emoji: '✅', title: '目前一切正常', top: 0))
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView.builder(

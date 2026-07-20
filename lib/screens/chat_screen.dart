@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import '../core/theme.dart';
 import '../core/refresh_bus.dart';
 import '../crypto/key_chain.dart';
@@ -204,32 +204,18 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── 空状态 ─────────────────────────────────────────────
   Widget _empty() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: EmptyState(
+        emoji: '💬',
+        title: '问问你的钱去哪了',
+        hint: '我可以帮你查统计、看预算、找趋势',
+        top: 0,
+        action: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
           children: [
-            const Text('💬', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 12),
-            const Text(
-              '问问你的钱去哪了',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '我可以帮你查统计、看预算、找趋势',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                for (final s in _suggestions)
-                  ActionChip(label: Text(s), onPressed: () => _send(s)),
-              ],
-            ),
+            for (final s in _suggestions)
+              ActionChip(label: Text(s), onPressed: () => _send(s)),
           ],
         ),
       ),
@@ -239,6 +225,8 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── 气泡 ─────────────────────────────────────────────
   Widget _bubble(ChatTurn t) {
     final isUser = t.isUser;
+    // 气泡配色：用户 = primaryLight 轻强调，助手 = surfaceAlt，文字统一 text1
+    final fg = AppColors.text1;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
@@ -246,10 +234,11 @@ class _ChatScreenState extends State<ChatScreen> {
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            const CircleAvatar(
+            CircleAvatar(
               radius: 16,
-              backgroundColor: Color(0xffeef2ff),
-              child: Text('🤖', style: TextStyle(fontSize: 14)),
+              backgroundColor: AppColors.primaryLight,
+              child: Icon(Icons.auto_awesome_rounded,
+                  size: 16, color: AppColors.primary),
             ),
             const SizedBox(width: 8),
           ],
@@ -264,9 +253,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     maxWidth: MediaQuery.of(context).size.width * 0.78,
                   ),
                   decoration: BoxDecoration(
-                    color: isUser
-                        ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
-                        : Colors.grey.shade100,
+                    color: isUser ? AppColors.primaryLight : AppColors.surfaceAlt,
                     borderRadius: BorderRadius.circular(14).copyWith(
                       topLeft: isUser ? null : const Radius.circular(2),
                       topRight: isUser ? const Radius.circular(2) : null,
@@ -277,9 +264,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: isUser
                       ? Text(
                           t.content,
-                          style: const TextStyle(fontSize: 14, height: 1.5),
+                          style: TextStyle(fontSize: 14, height: 1.5, color: fg),
                         )
-                      : _markdown(t.content),
+                      : _markdown(t.content, fg),
                 ),
                 for (final c in t.cards) ...[
                   const SizedBox(height: 6),
@@ -297,27 +284,23 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// 助手 Markdown 渲染：GFM（含表格），配色对齐主题
-  Widget _markdown(String content) {
-    const base = TextStyle(fontSize: 14, height: 1.5);
+  /// 助手 Markdown 渲染：GFM（含表格），配色对齐主题。
+  /// [fg] = 气泡文字色（text1），保证任何气泡底色上文字可读。
+  Widget _markdown(String content, Color fg) {
+    final base = TextStyle(fontSize: 14, height: 1.5, color: fg);
     return MarkdownBody(
       data: content,
       selectable: true,
       extensionSet: md.ExtensionSet.gitHubFlavored,
       styleSheet: MarkdownStyleSheet(
-        p: base.copyWith(color: AppColors.text1),
+        p: base,
         strong: base.copyWith(fontWeight: FontWeight.w700),
-        listBullet: base.copyWith(color: AppColors.text1),
-        h1: TextStyle(
-            fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text1),
-        h2: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text1),
-        h3: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1),
+        listBullet: base,
+        h1: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: fg),
+        h2: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: fg),
+        h3: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg),
         code: TextStyle(
-            fontSize: 13,
-            backgroundColor: AppColors.surfaceAlt,
-            color: AppColors.text1),
+            fontSize: 13, backgroundColor: AppColors.surfaceAlt, color: fg),
         blockquoteDecoration: BoxDecoration(
           color: AppColors.surfaceAlt,
           borderRadius: BorderRadius.circular(8),
@@ -338,28 +321,30 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 16,
-            backgroundColor: Color(0xffeef2ff),
-            child: Text('🤖', style: TextStyle(fontSize: 14)),
+            backgroundColor: AppColors.primaryLight,
+            child: Icon(Icons.auto_awesome_rounded,
+                size: 16, color: AppColors.primary),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: AppColors.surfaceAlt,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
-                SizedBox(
+              children: [
+                const SizedBox(
                   width: 12,
                   height: 12,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                SizedBox(width: 8),
-                Text('思考中…', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 8),
+                Text('思考中…',
+                    style: TextStyle(fontSize: 13, color: AppColors.text2)),
               ],
             ),
           ),
@@ -393,14 +378,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     // 未知类型：JSON 兜底
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
       ),
       child: Text(c.data.toString(),
-          style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+          style: Theme.of(context).textTheme.bodySmall),
     );
   }
 
@@ -414,22 +399,16 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((b) => b.cast<String, dynamic>())
         .toList();
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade100),
-      ),
+    return _ReplyCardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(title, style: Theme.of(context).textTheme.bodySmall),
               if (period != null) ...[
                 const Spacer(),
-                Text(period, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text(period, style: Theme.of(context).textTheme.bodySmall),
               ],
             ],
           ),
@@ -438,14 +417,10 @@ class _ChatScreenState extends State<ChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                '¥${total.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
+              AmountText(total, size: AmountSize.card),
               if (count != null) ...[
                 const SizedBox(width: 8),
-                Text('$count 笔',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text('$count 笔', style: Theme.of(context).textTheme.bodySmall),
               ],
             ],
           ),
@@ -473,23 +448,25 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+              Expanded(
+                  child: Text(label,
+                      style: TextStyle(fontSize: 13, color: AppColors.text1))),
               if (count != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Text('$count',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      style: Theme.of(context).textTheme.bodySmall),
                 ),
-              Text('¥${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              AmountText(amount, size: AmountSize.aux),
             ],
           ),
           const SizedBox(height: 2),
           LinearProgressIndicator(
             value: ratio,
             minHeight: 4,
-            backgroundColor: Colors.grey.shade100,
-            valueColor: AlwaysStoppedAnimation(Colors.blue.shade300),
+            borderRadius: BorderRadius.circular(2),
+            backgroundColor: AppColors.surfaceAlt,
+            valueColor: AlwaysStoppedAnimation(AppColors.primary),
           ),
         ],
       ),
@@ -502,26 +479,17 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((m) => m.cast<String, dynamic>())
         .toList();
     if (items.isEmpty) {
-      return Container(
+      return _ReplyCardShell(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Text('未设预算', style: TextStyle(fontSize: 12)),
+        child: Text('未设预算',
+            style: TextStyle(fontSize: 12, color: AppColors.text3)),
       );
     }
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade100),
-      ),
+    return _ReplyCardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('预算执行', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text('预算执行', style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 6),
           for (final it in items)
             Padding(
@@ -534,26 +502,39 @@ class _ChatScreenState extends State<ChatScreen> {
                       Expanded(
                         child: Text(
                           (it['categoryName'] as String?) ?? '',
-                          style: const TextStyle(fontSize: 13),
+                          style:
+                              TextStyle(fontSize: 13, color: AppColors.text1),
                         ),
                       ),
-                      Text(
-                        '¥${((it['spent'] as num?) ?? 0).toStringAsFixed(0)} / ${((it['limit'] as num?) ?? 0).toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 12),
+                      AmountText(
+                        ((it['spent'] as num?) ?? 0).toDouble(),
+                        size: AmountSize.aux,
+                        decimals: 0,
+                      ),
+                      Text(' / ',
+                          style:
+                              TextStyle(fontSize: 12, color: AppColors.text3)),
+                      AmountText(
+                        ((it['limit'] as num?) ?? 0).toDouble(),
+                        size: AmountSize.aux,
+                        decimals: 0,
+                        color: AppColors.text2,
                       ),
                     ],
                   ),
                   const SizedBox(height: 2),
+                  // 进度语义色：超支 danger · 将尽 warning · 正常 expense
                   LinearProgressIndicator(
                     value: ((it['rate'] as num?) ?? 0).toDouble().clamp(0.0, 1.0),
                     minHeight: 4,
-                    backgroundColor: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(2),
+                    backgroundColor: AppColors.surfaceAlt,
                     valueColor: AlwaysStoppedAnimation(
                       ((it['rate'] as num?) ?? 0) >= 1
-                          ? Colors.red
+                          ? AppColors.danger
                           : ((it['rate'] as num?) ?? 0) >= 0.9
-                              ? Colors.orange
-                              : Colors.green,
+                              ? AppColors.warning
+                              : AppColors.expense,
                     ),
                   ),
                 ],
@@ -565,31 +546,24 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _merchantCardWidget(MerchantCard m) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.purple.shade100),
-      ),
+    return _ReplyCardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text('🏪 商户分布',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('🏪 商户分布',
+                  style: Theme.of(context).textTheme.bodySmall),
               const Spacer(),
-              Text(m.period,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(m.period, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
           const SizedBox(height: 4),
           if (m.buckets.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text('没识别出商户名（账单可能没填备注）',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: TextStyle(fontSize: 12, color: AppColors.text3)),
             )
           else
             for (final b in m.buckets)
@@ -600,18 +574,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(
                       child: Text(
                         b['merchant'] as String,
-                        style: const TextStyle(fontSize: 13),
+                        style:
+                            TextStyle(fontSize: 13, color: AppColors.text1),
                       ),
                     ),
                     Text(
                       '${(b['count'] as int)} 笔',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '¥${(b['amount'] as double).toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
+                    AmountText(b['amount'] as double, size: AmountSize.aux),
                   ],
                 ),
               ),
@@ -620,7 +592,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 '共 ${m.totalCount} 笔，仅显示 top ${m.buckets.length}',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                style: TextStyle(fontSize: 11, color: AppColors.text3),
               ),
             ),
         ],
@@ -634,8 +606,8 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border, width: 0.6)),
         ),
         child: Row(
           children: [
@@ -647,9 +619,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 maxLines: 3,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
+                // 样式交给全局 InputDecorationTheme（填充式 surfaceAlt + 聚焦描边），
+                // 这里只保留尺寸微调，不再自设 border
                 decoration: const InputDecoration(
                   hintText: '问问你的财务情况…',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(24))),
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
@@ -676,6 +649,30 @@ class _MerchantAgg {
   double amount = 0;
   int count = 0;
   _MerchantAgg({required this.name});
+}
+
+/// 对话内回复卡（stat / budget / 商户分布）统一外壳：
+/// surface 底 + border 幽灵描边 + 16 圆角，替代旧「白底 + 彩色描边」。
+class _ReplyCardShell extends StatelessWidget {
+  const _ReplyCardShell({
+    required this.child,
+    this.padding = const EdgeInsets.all(14),
+  });
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: child,
+    );
+  }
 }
 
 class _CfoActionCard extends StatefulWidget {
@@ -973,7 +970,7 @@ class _BillDraftCardState extends State<_BillDraftCard> {
     final acc = _accountName;
     final note = _note.trim();
     final parts = <String>[
-      '¥${_amount.toStringAsFixed(2)}',
+      '¥${formatAmount(_amount)}',
       _categoryName,
       if (acc.isNotEmpty) acc,
       if (note.isNotEmpty) note,

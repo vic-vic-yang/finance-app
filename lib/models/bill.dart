@@ -1,14 +1,11 @@
 import 'dart:convert';
 
-import 'package:intl/intl.dart';
-
 import '../crypto/key_chain.dart';
+import '../widgets/amount_text.dart';
 
-final _moneyFmt = NumberFormat('#,##0.00');
-final _moneyFmtInt = NumberFormat('#,##0');
-
-String fmtMoney(double amount) => '¥${_moneyFmt.format(amount)}';
-String fmtMoneyInt(double amount) => '¥${_moneyFmtInt.format(amount)}';
+/// 全局金额格式化统一走 widgets/amount_text.dart 的 formatAmount（千分位）。
+String fmtMoney(double amount) => '¥${formatAmount(amount)}';
+String fmtMoneyInt(double amount) => '¥${formatAmount(amount, decimals: 0)}';
 
 class BillCategory {
   final String id;

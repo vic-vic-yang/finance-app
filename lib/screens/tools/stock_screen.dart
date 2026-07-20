@@ -3,7 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
-import '../../widgets/glass.dart';
+import '../../widgets/siku_ui.dart';
 import '../../services/api_service.dart';
 import 'stock_detail_screen.dart';
 
@@ -82,19 +82,16 @@ class _StockScreenState extends State<StockScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const AuraAppBar(title: '我的持仓'),
+      appBar: AuraAppBar(
+        title: '我的持仓',
+        actions: [
+          HeaderAddButton(tooltip: '添加持仓', onPressed: _search),
+        ],
+      ),
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _tabList(_holdings, holding: true),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _search,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('添加持仓'),
-        // 覆盖主题里 FAB 的 CircleBorder，否则带文字的扩展 FAB 会被挤成圆形
-        shape: const StadiumBorder(),
-        extendedPadding: const EdgeInsets.symmetric(horizontal: 20),
       ),
     );
   }
@@ -122,7 +119,7 @@ class _StockScreenState extends State<StockScreen> {
           EmptyState(
             emoji: '💼',
             title: '还没有持仓',
-            hint: '点右下角「添加持仓」，填买入价和数量，市值和每日盈亏都会自动算。',
+            hint: '点右上 + 添加持仓，填买入价和数量，市值和每日盈亏都会自动算。',
           ),
         ],
       );

@@ -151,7 +151,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(m),
-        backgroundColor: AppColors.expense,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),

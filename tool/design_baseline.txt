@@ -1,0 +1,3 @@
+Running build hooks...Running build hooks...# design_lint baseline v1
+# 重新生成：dart run tool/design_lint.dart --baseline > tool/design_baseline.txt
+# 存量违规共 0 处

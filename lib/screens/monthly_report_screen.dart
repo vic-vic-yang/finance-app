@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import '../core/theme.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
@@ -244,250 +244,244 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
       ),
       body: AuraBackground(
         child: _loading
-            ? const Center(
+            ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text('AI 正在帮你写报告…'),
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text('AI 正在帮你写报告…',
+                        style: TextStyle(color: AppColors.text2)),
                   ],
                 ),
               )
             : _error != null
-                ? Center(child: Text(_error!))
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(_error!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppColors.text2, height: 1.5)),
+                    ),
+                  )
                 : _content(),
       ),
     );
   }
 
-  /// header 上的紧凑「上月 / 本月」切换胶囊
+  /// header 上的紧凑「上月 / 本月」切换
   Widget _periodToggle() {
-    Widget seg(int v, String label) {
-      final sel = _which == v;
-      return GestureDetector(
-        onTap: () {
-          if (_which == v) return;
-          setState(() => _which = v);
-          _generate();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: sel ? AppColors.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-              color: sel ? AppColors.onPrimary : AppColors.text2,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border, width: 0.6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [seg(0, '上月'), seg(1, '本月')],
-        ),
-      ),
+    return AuraSegmented<int>(
+      options: const [
+        (value: 0, label: '上月'),
+        (value: 1, label: '本月'),
+      ],
+      selected: _which,
+      expanded: false,
+      onChanged: (v) {
+        if (_which == v) return;
+        setState(() => _which = v);
+        _generate();
+      },
     );
   }
 
   Widget _content() {
-    final periodLabel =
-        '${_periodStart.year}年${_periodStart.month}月';
+    final periodLabel = '${_periodStart.year}年${_periodStart.month}月';
     return RefreshIndicator(
       onRefresh: _generate,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
         children: [
           // 顶部大数字
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(periodLabel,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(child: _bigNum('收入', _income, AppColors.income)),
-                      Container(width: 1, height: 36, color: Colors.grey.shade300),
-                      Expanded(child: _bigNum('支出', _expense, AppColors.expense)),
-                      Container(width: 1, height: 36, color: Colors.grey.shade300),
-                      Expanded(
-                        child: _bigNum(
-                          '结余',
-                          _income - _expense,
-                          (_income - _expense) >= 0
-                              ? Colors.blue
-                              : Colors.deepOrange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _summaryCard(periodLabel),
           const SizedBox(height: 12),
 
           // AI 文案
           if (_narrative != null && _narrative!.isNotEmpty) ...[
-            Card(
-              color: Colors.deepPurple.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        Text('🤖 ', style: TextStyle(fontSize: 16)),
-                        Text(
-                          'AI 点评',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _narrative!,
-                      style: const TextStyle(fontSize: 14, height: 1.6),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _aiCard(),
             const SizedBox(height: 12),
           ],
 
           if (_highlights.isNotEmpty) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    for (final h in _highlights)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Text(h.icon, style: const TextStyle(fontSize: 18)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(h.text)),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+            _highlightsCard(),
             const SizedBox(height: 12),
           ],
 
           // 分类排行
-          if (_byCategory.isNotEmpty) _sectionCard(
-            title: '分类排行',
-            rows: _byCategory.take(8).map((c) {
-              return _BarRow(
-                label: c.name,
-                amount: c.amount,
-                total: _expense,
-                count: c.count,
-              );
-            }).toList(),
-          ),
+          if (_byCategory.isNotEmpty) ...[
+            _sectionCard(
+              title: '分类排行',
+              rows: _byCategory.take(8).map((c) {
+                return _BarRow(
+                  label: c.name,
+                  amount: c.amount,
+                  total: _expense,
+                  count: c.count,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // 商户排行
-          if (_byMerchant.isNotEmpty) _sectionCard(
-            title: '商户 Top',
-            rows: _byMerchant.take(8).map((m) {
-              return _BarRow(
-                label: m.merchant,
-                amount: m.amount,
-                total: _expense,
-                count: m.count,
-              );
-            }).toList(),
-          ),
+          if (_byMerchant.isNotEmpty) ...[
+            _sectionCard(
+              title: '商户 Top',
+              rows: _byMerchant.take(8).map((m) {
+                return _BarRow(
+                  label: m.merchant,
+                  amount: m.amount,
+                  total: _expense,
+                  count: m.count,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // 预算执行
-          if (_budgetExec.isNotEmpty) Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Text('预算执行',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                  for (final b in _budgetExec)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: _budgetRow(b),
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 40),
+          if (_budgetExec.isNotEmpty) _budgetCard(),
         ],
       ),
     );
   }
 
-  Widget _bigNum(String label, double v, Color color) {
+  // ── 顶部汇总卡：收入 / 支出 / 结余 三大数字 ─────────────────
+  Widget _summaryCard(String periodLabel) {
+    final balance = _income - _expense;
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(periodLabel,
+              style: TextStyle(fontSize: 12, color: AppColors.text3)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _bigNum('收入', _income, AmountTone.income)),
+              Container(width: 1, height: 36, color: AppColors.border),
+              Expanded(child: _bigNum('支出', _expense, AmountTone.expense)),
+              Container(width: 1, height: 36, color: AppColors.border),
+              Expanded(child: _bigNum('结余', balance, AmountTone.auto)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bigNum(String label, double v, AmountTone tone) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 2),
-        Text(
-          '¥${v.toStringAsFixed(0)}',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-        ),
+        Text(label, style: TextStyle(fontSize: 12, color: AppColors.text3)),
+        const SizedBox(height: 4),
+        AmountText(v, size: AmountSize.card, tone: tone, decimals: 0),
       ],
     );
   }
 
-  Widget _sectionCard({required String title, required List<_BarRow> rows}) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+  // ── AI 点评：info 级洞察 —— surface 底 + 左侧 3px primary 色条 ──
+  Widget _aiCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppTheme.ambientShadow(),
+      ),
+      clipBehavior: Clip.antiAlias,
+      // Stack + 左侧贴边色条：高度跟随内容（同 home_screen 的 _insightCard）
+      child: Stack(
+        children: [
+          Positioned(
+              left: 0, top: 0, bottom: 0,
+              child: Container(width: 3, color: AppColors.primary)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.auto_awesome_rounded,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'AI 点评',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _narrative!,
+                  style: TextStyle(
+                      fontSize: 13.5, height: 1.6, color: AppColors.text2),
+                ),
+              ],
             ),
-            for (final r in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: _barWidget(r),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── AI 关键点列表 ─────────────────────────────────────────
+  Widget _highlightsCard() {
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+      child: Column(
+        children: [
+          for (final h in _highlights)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Text(h.icon, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(h.text,
+                        style: TextStyle(
+                            fontSize: 13, height: 1.4,
+                            color: AppColors.text1)),
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── 排行卡（分类 / 商户通用）：标题 + 进度条行 ──────────────
+  Widget _sectionCard({required String title, required List<_BarRow> rows}) {
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text1)),
+          const SizedBox(height: 8),
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: _barWidget(r),
+            ),
+        ],
       ),
     );
   }
@@ -499,50 +493,95 @@ class _MonthlyReportScreenState extends State<MonthlyReportScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: Text(r.label, style: const TextStyle(fontSize: 13))),
+            Expanded(
+              child: Text(r.label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: AppColors.text1)),
+            ),
             Text('${r.count}笔',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            const SizedBox(width: 8),
-            Text('¥${r.amount.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontSize: 11, color: AppColors.text3)),
+            const SizedBox(width: 10),
+            // 排行全是支出金额，统一 expense 语义色
+            AmountText(r.amount,
+                size: AmountSize.aux, tone: AmountTone.expense, decimals: 0),
           ],
         ),
-        const SizedBox(height: 2),
-        LinearProgressIndicator(
-          value: ratio,
-          minHeight: 4,
-          backgroundColor: Colors.grey.shade100,
-          valueColor: AlwaysStoppedAnimation(Colors.indigo.shade300),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 5,
+            backgroundColor: AppColors.surfaceAlt,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+          ),
         ),
       ],
+    );
+  }
+
+  // ── 预算执行卡 ────────────────────────────────────────────
+  Widget _budgetCard() {
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('预算执行',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text1)),
+          const SizedBox(height: 8),
+          for (final b in _budgetExec)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: _budgetRow(b),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _budgetRow(_BudgetExec b) {
     final r = b.limit > 0 ? (b.used / b.limit).clamp(0.0, 999.0) : 0.0;
     final over = r >= 1;
+    // 语义填色：超支 danger · 临界 warning · 节约 expense · 正常 primary
+    final fill = over
+        ? AppColors.danger
+        : r >= 0.9
+            ? AppColors.warning
+            : r < 0.6
+                ? AppColors.expense
+                : AppColors.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Expanded(child: Text(b.categoryName, style: const TextStyle(fontSize: 13))),
-            Text(
-              '¥${b.used.toStringAsFixed(0)} / ${b.limit.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontSize: 12,
-                color: over ? Colors.red : Colors.grey.shade700,
-              ),
+            Expanded(
+              child: Text(b.categoryName,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: AppColors.text1)),
             ),
+            AmountText(b.used,
+                size: AmountSize.aux,
+                decimals: 0,
+                color: over ? AppColors.danger : AppColors.text1),
+            Text(' / ', style: TextStyle(fontSize: 12, color: AppColors.text3)),
+            AmountText(b.limit,
+                size: AmountSize.aux, decimals: 0, color: AppColors.text3),
           ],
         ),
-        const SizedBox(height: 2),
-        LinearProgressIndicator(
-          value: r.clamp(0.0, 1.0),
-          minHeight: 4,
-          backgroundColor: Colors.grey.shade100,
-          valueColor: AlwaysStoppedAnimation(
-            over ? Colors.red : r >= 0.9 ? Colors.orange : Colors.green,
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: r.clamp(0.0, 1.0),
+            minHeight: 5,
+            backgroundColor: AppColors.surfaceAlt,
+            valueColor: AlwaysStoppedAnimation<Color>(fill),
           ),
         ),
       ],

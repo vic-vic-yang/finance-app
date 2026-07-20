@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
@@ -12,6 +13,7 @@ import '../services/api_service.dart';
 import '../services/funding_matcher.dart';
 import '../services/payment_method_map.dart';
 import '../services/recents_service.dart';
+import '../widgets/success_check.dart';
 import 'ai_imports_screen.dart';
 
 class AddBillScreen extends StatefulWidget {
@@ -463,7 +465,7 @@ class _AddBillScreenState extends State<AddBillScreen>
           );
           if (!mounted) return;
           bumpRefresh();
-          Navigator.pop(context, true);
+          await _popAfterSave();
           return;
         }
 
@@ -475,7 +477,7 @@ class _AddBillScreenState extends State<AddBillScreen>
           await _learnTransferMapping(b, _toAccount!);
           if (!mounted) return;
           bumpRefresh();
-          Navigator.pop(context, true);
+          await _popAfterSave();
           return;
         }
 
@@ -490,7 +492,7 @@ class _AddBillScreenState extends State<AddBillScreen>
         );
         if (!mounted) return;
         bumpRefresh();
-        Navigator.pop(context, true);
+        await _popAfterSave();
       } catch (e) {
         _toast(e is ApiException ? e.message : '转账失败，请重试');
       } finally {
@@ -546,7 +548,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       await RecentsService.setLastAccount(_selectedAccount!.id);
       if (!mounted) return;
       bumpRefresh();
-      Navigator.pop(context, true);
+      await _popAfterSave();
     } catch (_) {
       _toast('保存失败，请重试');
     } finally {
@@ -561,6 +563,16 @@ class _AddBillScreenState extends State<AddBillScreen>
       backgroundColor: AppColors.text1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
+  }
+
+  /// 保存成功的统一收尾：轻触感 + 屏幕中央对勾微动画，结束后按原逻辑 pop(true)。
+  /// 不改变既有保存逻辑：refreshBus 通知仍在各调用点原地触发，
+  /// 失败路径不经过这里、无任何反馈。系统「减弱动效」时 Overlay 自动跳过。
+  Future<void> _popAfterSave() async {
+    HapticFeedback.lightImpact();
+    await SuccessCheckOverlay.show(context);
+    if (!mounted) return;
+    Navigator.pop(context, true);
   }
 
   // 语音 / OCR 入口已下架：AI 智能记账走 /ai/imports 流水线（上传文件 → 后端 LLM 解析）
@@ -602,9 +614,20 @@ class _AddBillScreenState extends State<AddBillScreen>
   /// （与 Aura「渐变软卡」语言一致，不改变各类型的颜色识别）
   List<Color> get _accentGradient {
     final c = _accentColor;
-    final darker = Color.alphaBlend(Colors.black.withValues(alpha: 0.18), c);
+    final darker = Color.alphaBlend(
+        Colors.black.withValues(alpha: 0.18), c); // design:ok 渐变压暗计算
     return [c, darker];
   }
+
+  /// accent 实底 / 渐变底上的高对比前景：按底色亮度自动选深 / 浅，
+  /// 阈值与 AppColors.onPrimary 一致（luminance > 0.55 → 深色）
+  Color _fgOn(Color bg) => bg.computeLuminance() > 0.55
+      ? const Color(0xFF143724) // design:ok 同 AppColors.onPrimary 深色端
+      : Colors.white; // design:ok 同 AppColors.onPrimary 浅色端
+
+  /// header 渐变上的前景色：渐变自 accent 本色起向下压暗 18%，顶部最亮，
+  /// 按起始色（最亮端）算对比，整个渐变区域内都安全
+  Color get _onHeaderFg => _fgOn(_accentGradient.first);
 
   // ── Build ─────────────────────────────────────────────────────
   @override
@@ -684,6 +707,12 @@ class _AddBillScreenState extends State<AddBillScreen>
 
   // ── Header ────────────────────────────────────────────────────
   Widget _header(Color color) {
+    // 渐变头上的前景：按渐变底色自动算对比色，次级层次用 alpha 派生
+    final fg = _onHeaderFg;
+    final fg70 = fg.withValues(alpha: 0.7);
+    final fg60 = fg.withValues(alpha: 0.6);
+    final fg38 = fg.withValues(alpha: 0.38);
+    final fg24 = fg.withValues(alpha: 0.24);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
@@ -708,16 +737,15 @@ class _AddBillScreenState extends State<AddBillScreen>
               padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
               child: Row(children: [
                 IconButton(
-                  icon: const Icon(Icons.close_rounded,
-                      color: Colors.white70, size: 22),
+                  icon: Icon(Icons.close_rounded, color: fg70, size: 22),
                   onPressed: () => Navigator.pop(context),
                 ),
                 Expanded(
                   child: Text(
                     widget.bill != null ? '编辑账单' : '记一笔',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: fg,
                         fontSize: 16,
                         fontWeight: FontWeight.w600),
                   ),
@@ -727,8 +755,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                 // 无右侧按钮时补一个等宽占位，保持标题视觉居中
                 if (widget.bill == null)
                   IconButton(
-                    icon: const Icon(Icons.file_upload_rounded,
-                        color: Colors.white70, size: 22),
+                    icon: Icon(Icons.file_upload_rounded,
+                        color: fg70, size: 22),
                     tooltip: 'AI 智能导入',
                     onPressed: () {
                       Navigator.push(
@@ -740,8 +768,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                   )
                 else if (!widget.bill!.isTransfer)
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_horiz_rounded,
-                        color: Colors.white70, size: 22),
+                    icon: Icon(Icons.more_horiz_rounded,
+                        color: fg70, size: 22),
                     tooltip: '更多',
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -763,12 +791,12 @@ class _AddBillScreenState extends State<AddBillScreen>
             ),
             TabBar(
               controller: _tabCtrl,
-              indicator: const UnderlineTabIndicator(
-                borderSide: BorderSide(color: Colors.white70, width: 2.5),
+              indicator: UnderlineTabIndicator(
+                borderSide: BorderSide(color: fg70, width: 2.5),
               ),
               indicatorSize: TabBarIndicatorSize.label,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
+              labelColor: fg,
+              unselectedLabelColor: fg60,
               labelStyle: const TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w600),
               unselectedLabelStyle: const TextStyle(fontSize: 15),
@@ -792,17 +820,16 @@ class _AddBillScreenState extends State<AddBillScreen>
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      const Text('¥',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 24)),
+                      Text('¥',
+                          style: TextStyle(color: fg70, fontSize: 24)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           _formatTotal(),
                           style: TextStyle(
                             color: (_total == 0 && _amountStr.isEmpty)
-                                ? Colors.white38
-                                : Colors.white,
+                                ? fg38
+                                : fg,
                             fontSize: 38,
                             fontWeight: FontWeight.bold,
                             letterSpacing: -1,
@@ -816,7 +843,7 @@ class _AddBillScreenState extends State<AddBillScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white24,
+                            color: fg24,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child:
@@ -825,8 +852,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                                 style: const TextStyle(fontSize: 14)),
                             const SizedBox(width: 4),
                             Text(_selectedCategory!.name,
-                                style: const TextStyle(
-                                    color: Colors.white,
+                                style: TextStyle(
+                                    color: fg,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500)),
                           ]),
@@ -836,18 +863,18 @@ class _AddBillScreenState extends State<AddBillScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white24,
+                            color: fg24,
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Row(
+                          child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.swap_horiz_rounded,
-                                    size: 14, color: Colors.white),
-                                SizedBox(width: 4),
+                                    size: 14, color: fg),
+                                const SizedBox(width: 4),
                                 Text('账户转账',
                                     style: TextStyle(
-                                        color: Colors.white,
+                                        color: fg,
                                         fontSize: 13,
                                         fontWeight: FontWeight.w500)),
                               ]),
@@ -861,8 +888,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                       padding: const EdgeInsets.only(top: 2, left: 28),
                       child: Text(
                         _displayExpr,
-                        style: const TextStyle(
-                            color: Colors.white70,
+                        style: TextStyle(
+                            color: fg70,
                             fontSize: 13,
                             fontWeight: FontWeight.w400),
                         maxLines: 1,
@@ -1157,141 +1184,6 @@ class _AddBillScreenState extends State<AddBillScreen>
     return a.name;
   }
 
-  // ── Category grid (旧版网格 - 保留 fallback, 实际未使用) ────
-  // ignore: unused_element
-  Widget _categoryGrid(Color color) {
-    final cats = _filteredCategories;
-    if (cats.isEmpty) {
-      return SizedBox(
-          height: 60,
-          child: Center(
-              child: Text('暂无分类', style: TextStyle(color: AppColors.text2))));
-    }
-    // 限制最多 2 行可见，超出纵向滚动 —— 避免挤掉下面的键盘
-    return SizedBox(
-      height: 150,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: GridView.builder(
-          padding: EdgeInsets.zero,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 5,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 6,
-            childAspectRatio: 0.85,
-          ),
-          itemCount: cats.length,
-        itemBuilder: (_, i) {
-          final c = cats[i];
-          final sel = _selectedCategory?.id == c.id;
-          return GestureDetector(
-            onTap: () => setState(() => _selectedCategory = c),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: sel ? color : AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: sel ? color : AppColors.border,
-                    ),
-                    boxShadow: sel
-                        ? [
-                            BoxShadow(
-                                color: color.withValues(alpha: 0.3),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2))
-                          ]
-                        : null,
-                  ),
-                  child: Center(
-                    child: Text(c.icon ?? '📂',
-                        style: const TextStyle(fontSize: 22)),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  c.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: sel ? color : AppColors.text2,
-                    fontWeight:
-                        sel ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-        ),
-      ),
-    );
-  }
-
-  // ── Account chips (旧版 - 保留 fallback, 实际未使用) ────
-  // ignore: unused_element
-  Widget _accountChips() {
-    if (_accounts.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(children: [
-              Icon(Icons.add_circle_outline_rounded,
-                  color: AppColors.primary, size: 18),
-              SizedBox(width: 8),
-              Text('请先添加账户',
-                  style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w500)),
-            ]),
-          ),
-        ),
-      );
-    }
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: _accounts.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final a = _accounts[i];
-          final sel = _selectedAccount?.id == a.id;
-          return ChoiceChip(
-            label: Text('${a.typeEmoji} ${a.name}'),
-            selected: sel,
-            onSelected: (_) => setState(() => _selectedAccount = a),
-            selectedColor: AppColors.primaryLight,
-            backgroundColor: AppColors.surface,
-            side: BorderSide(
-                color: sel ? AppColors.primary : AppColors.border),
-            labelStyle: TextStyle(
-              color: sel ? AppColors.primary : AppColors.text1,
-              fontSize: 13,
-              fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
-            ),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-          );
-        },
-      ),
-    );
-  }
-
   // ── Date tile ─────────────────────────────────────────────────
   Widget _dateTile() => GestureDetector(
         onTap: _pickDate,
@@ -1395,7 +1287,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     final Color fg;
     if (isDone || isActiveOp) {
       bg = color;
-      fg = Colors.white;
+      fg = _fgOn(color); // 实底 accent 键面，前景按底色亮度取对比色
     } else if (isOp || isBackspace) {
       bg = color.withValues(alpha: 0.08);
       fg = color;

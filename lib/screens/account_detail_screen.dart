@@ -353,7 +353,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                         child: FilledButton(
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppColors.onPrimary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -361,11 +361,11 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                           ),
                           onPressed: submitting ? null : confirm,
                           child: submitting
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
+                                      strokeWidth: 2, color: AppColors.onPrimary),
                                 )
                               : const Text('确认'),
                         ),
@@ -410,7 +410,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       backgroundColor: AppColors.bg,
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
         tooltip: '记一笔',
         child: const Icon(Icons.add_rounded),
         onPressed: () async {

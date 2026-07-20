@@ -5,7 +5,8 @@ import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
-import '../widgets/glass.dart';
+import '../widgets/chart_kit.dart';
+import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart';
 import 'bills_screen.dart';
 import 'tools/stock_screen.dart';
@@ -241,17 +242,8 @@ class _StatsScreenState extends State<StatsScreen>
   double get _currentTotal => _tab == 0 ? _totalExpense : _totalIncome;
 
   // ── Pie colours ───────────────────────────────────────────────
-  // 由主题色派生 8 个层次（HSL 调整明度），保持视觉统一
-  List<Color> get _palette {
-    final base = HSLColor.fromColor(AppColors.primary);
-    final steps = <double>[0.0, -0.10, 0.08, -0.18, 0.16, -0.05, 0.24, -0.25];
-    return steps.map((d) {
-      final l = (base.lightness + d).clamp(0.18, 0.78);
-      return base.withLightness(l).toColor();
-    }).toList();
-  }
-
-  Color _colorFor(int i) => _palette[i % _palette.length];
+  // 切片 / 图例 / 占比条统一走 ChartPalette（见 widgets/chart_kit.dart 规范），
+  // 用同一 index 取色保证三者一致。
 
   @override
   Widget build(BuildContext context) {
@@ -314,39 +306,14 @@ class _StatsScreenState extends State<StatsScreen>
 
   // ── Period toggle (月 / 年) ─────────────────────────────────
   Widget _periodToggle() {
-    return Container(
-      height: 30,
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: AppColors.bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _periodChip('月', _Period.month),
-        _periodChip('年', _Period.year),
-      ]),
-    );
-  }
-
-  Widget _periodChip(String label, _Period p) {
-    final sel = _period == p;
-    return GestureDetector(
-      onTap: () => _switchPeriod(p),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: sel ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: sel ? AppColors.onPrimary : AppColors.text2)),
-      ),
+    return AuraSegmented<_Period>(
+      options: const [
+        (value: _Period.month, label: '月'),
+        (value: _Period.year, label: '年'),
+      ],
+      selected: _period,
+      onChanged: _switchPeriod,
+      expanded: false,
     );
   }
 
@@ -407,26 +374,8 @@ class _StatsScreenState extends State<StatsScreen>
                 style: TextStyle(fontSize: 11, color: AppColors.text3)),
           ]),
           const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('¥',
-                  style: TextStyle(
-                      fontSize: 18,
-                      color: AppColors.text1,
-                      fontWeight: FontWeight.w500)),
-              const SizedBox(width: 2),
-              Text(
-                fmtMoney(hasLoans ? _netWorth : _assetTotal),
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.text1,
-                    letterSpacing: -0.5),
-              ),
-            ],
-          ),
+          AmountText(hasLoans ? _netWorth : _assetTotal,
+              size: AmountSize.hero, color: AppColors.text1),
           if (hasLoans) ...[
             const SizedBox(height: 6),
             Wrap(spacing: 14, runSpacing: 4, children: [
@@ -507,7 +456,7 @@ class _StatsScreenState extends State<StatsScreen>
       LineChartData(
         minY: minY - pad,
         maxY: maxY + pad,
-        gridData: const FlGridData(show: false),
+        gridData: auraGrid(),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
           leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -537,17 +486,13 @@ class _StatsScreenState extends State<StatsScreen>
           ),
         ),
         lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => AppColors.text1,
+          touchTooltipData: auraLineTooltipData(
             getTooltipItems: (items) => items.map((it) {
               final idx = it.x.toInt();
               final date = _assetTrend[idx].date;
               return LineTooltipItem(
                 '$date\n${fmtMoney(it.y)}',
-                TextStyle(
-                    color: AppColors.surface,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600),
+                auraTooltipStyle().textStyle,
               );
             }).toList(),
           ),
@@ -625,14 +570,11 @@ class _StatsScreenState extends State<StatsScreen>
                   Icon(Icons.chevron_right_rounded, size: 14, color: color),
               ]),
               const SizedBox(height: 6),
-              Text(
-                fmtMoneyInt(amount.abs()),
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    letterSpacing: -0.5),
-                overflow: TextOverflow.ellipsis,
+              AmountText(
+                amount.abs(),
+                size: AmountSize.card,
+                decimals: 0,
+                color: color,
               ),
               if (mom != null) ...[
                 const SizedBox(height: 3),
@@ -868,42 +810,16 @@ class _StatsScreenState extends State<StatsScreen>
   }
 
   // ── Tab bar ───────────────────────────────────────────────────
-  Widget _tabBar() => Container(
-        height: 38,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(children: [
-          _tabBtn('支出', 0),
-          _tabBtn('收入', 1),
-        ]),
-      );
-
-  Widget _tabBtn(String label, int idx) => Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() {
-            _tab = idx;
-            _touchedIndex = -1;
-          }),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            margin: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: _tab == idx ? AppColors.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          _tab == idx ? AppColors.onPrimary : AppColors.text2)),
-            ),
-          ),
-        ),
+  Widget _tabBar() => AuraSegmented<int>(
+        options: const [
+          (value: 0, label: '支出'),
+          (value: 1, label: '收入'),
+        ],
+        selected: _tab,
+        onChanged: (i) => setState(() {
+          _tab = i;
+          _touchedIndex = -1;
+        }),
       );
 
   // ── Pie chart card ────────────────────────────────────────────
@@ -942,7 +858,7 @@ class _StatsScreenState extends State<StatsScreen>
                   final touched = _touchedIndex == i;
                   return PieChartSectionData(
                     value: s.total,
-                    color: _colorFor(i),
+                    color: ChartPalette.colorAt(i),
                     radius: touched ? 54 : 46,
                     title: touched
                         ? '${pct.toStringAsFixed(1)}%'
@@ -950,7 +866,7 @@ class _StatsScreenState extends State<StatsScreen>
                     titleStyle: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white),
+                        color: Colors.white), // design:ok 彩色切片上的标签
                   );
                 }).toList(),
                 centerSpaceRadius: 28,
@@ -972,7 +888,7 @@ class _StatsScreenState extends State<StatsScreen>
                       width: 10,
                       height: 10,
                       decoration: BoxDecoration(
-                        color: _colorFor(i),
+                        color: ChartPalette.colorAt(i),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -986,12 +902,10 @@ class _StatsScreenState extends State<StatsScreen>
                               fontSize: 12, color: AppColors.text2),
                           overflow: TextOverflow.ellipsis),
                     ),
-                    Text(
-                      fmtMoneyInt(s.total),
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.text1),
+                    AmountText(
+                      s.total,
+                      size: AmountSize.aux,
+                      decimals: 0,
                     ),
                   ]),
                 );
@@ -1018,7 +932,6 @@ class _StatsScreenState extends State<StatsScreen>
   Widget _categoryList() {
     final stats = _currentStats;
     final total = _currentTotal > 0 ? _currentTotal : 1;
-    final color = _tab == 0 ? AppColors.expense : AppColors.income;
 
     return GlassCard(
       radius: 16,
@@ -1053,11 +966,11 @@ class _StatsScreenState extends State<StatsScreen>
                                       fontWeight: FontWeight.w500,
                                       color: AppColors.text1)),
                               const Spacer(),
-                              Text(fmtMoney(s.total),
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: color)),
+                              AmountText(s.total,
+                                  size: AmountSize.list,
+                                  tone: _tab == 0
+                                      ? AmountTone.expense
+                                      : AmountTone.income),
                             ]),
                             const SizedBox(height: 2),
                             Row(children: [
@@ -1084,7 +997,7 @@ class _StatsScreenState extends State<StatsScreen>
                         minHeight: 4,
                         backgroundColor: AppColors.border,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                            _colorFor(i)),
+                            ChartPalette.colorAt(i)),
                       ),
                     ),
                   ],

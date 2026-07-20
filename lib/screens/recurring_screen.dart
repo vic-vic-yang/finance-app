@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/glass.dart';
+import '../widgets/siku_ui.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
 import '../crypto/key_chain.dart';
@@ -125,7 +125,11 @@ class _RecurringScreenState extends State<RecurringScreen>
         content: const Text('此操作不会删除历史账单，只会停止追踪。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -166,6 +170,12 @@ class _RecurringScreenState extends State<RecurringScreen>
       backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '周期账单',
+        actions: [
+          HeaderAddButton(
+            tooltip: '新建周期账单',
+            onPressed: () => _openEditSheet(),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           tabs: [
@@ -180,12 +190,16 @@ class _RecurringScreenState extends State<RecurringScreen>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.deepOrange,
+                        color: AppColors.warningLight,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         '${_candidates.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                        style: TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -203,17 +217,17 @@ class _RecurringScreenState extends State<RecurringScreen>
                 children: [_buildList(), _buildCandidates()],
               ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openEditSheet(),
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
   // ── 已订阅列表 ─────────────────────────────────────────────
   Widget _buildList() {
     if (_list.isEmpty) {
-      return _empty('还没有周期账单\n切到 "AI 候选" 看看 AI 能不能从你的历史账单里找一些', icon: '📋');
+      return _empty(
+        title: '还没有周期账单',
+        hint: '切到 "AI 候选" 看看 AI 能不能从你的历史账单里找一些',
+        emoji: '📋',
+      );
     }
     final totalMonthly = _list.fold<double>(
       0,
@@ -222,32 +236,33 @@ class _RecurringScreenState extends State<RecurringScreen>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
         children: [
-          if (totalMonthly > 0)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    const Text('💰 ', style: TextStyle(fontSize: 22)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('每月固定支出', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                          const SizedBox(height: 2),
-                          Text('¥${totalMonthly.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
+          if (totalMonthly > 0) ...[
+            GlassCard(
+              radius: 16,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                children: [
+                  const Text('💰', style: TextStyle(fontSize: 22)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('每月固定支出',
+                            style: TextStyle(fontSize: 12.5, color: AppColors.text2)),
+                        const SizedBox(height: 4),
+                        AmountText(totalMonthly,
+                            size: AmountSize.card, tone: AmountTone.expense),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 14),
+          ],
           for (final r in _list) _itemTile(r),
         ],
       ),
@@ -268,65 +283,116 @@ class _RecurringScreenState extends State<RecurringScreen>
 
     final days = r.nextDate.difference(DateTime.now()).inDays;
     String nextLabel;
-    Color nextColor = Colors.grey.shade600;
+    Color nextColor = AppColors.text3;
     if (days <= 0) {
       nextLabel = '今天到期';
-      nextColor = Colors.red;
+      nextColor = AppColors.danger;
     } else if (days <= 3) {
       nextLabel = '$days 天后';
-      nextColor = Colors.orange;
+      nextColor = AppColors.warning;
     } else {
       nextLabel = '$days 天后';
     }
 
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.deepPurple.shade50,
-          child: Text(cat?.displayIcon ?? '📋'),
-        ),
-        title: Row(
-          children: [
-            Expanded(child: Text(cat?.fullName ?? '未分类')),
-            if (r.isAuto)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text('AI 发现', style: TextStyle(fontSize: 10, color: Colors.green)),
-              ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        onLongPress: () => _delete(r),
+        child: GlassCard(
+          radius: 14,
+          padding: const EdgeInsets.all(14),
+          onTap: () => _openEditSheet(init: r),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${acc?.name ?? '账户'} · ${r.cycleLabel}'),
-              if (note.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(note, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              const SizedBox(height: 4),
-              Text(nextLabel, style: TextStyle(fontSize: 12, color: nextColor)),
+                alignment: Alignment.center,
+                child: Text(cat?.displayIcon ?? '📋',
+                    style: const TextStyle(fontSize: 20)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            cat?.fullName ?? '未分类',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.text1,
+                            ),
+                          ),
+                        ),
+                        if (r.isAuto) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryLight,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text('AI 发现',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${acc?.name ?? '账户'} · ${r.cycleLabel}',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.text2),
+                    ),
+                    if (note.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(note,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                TextStyle(fontSize: 12, color: AppColors.text3)),
+                      ),
+                    const SizedBox(height: 5),
+                    Text(
+                      nextLabel,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: nextColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: AmountText(
+                  r.amount,
+                  size: AmountSize.list,
+                  tone: r.type == 'income'
+                      ? AmountTone.income
+                      : AmountTone.expense,
+                ),
+              ),
             ],
           ),
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '¥${r.amount.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        onTap: () => _openEditSheet(init: r),
-        onLongPress: () => _delete(r),
       ),
     );
   }
@@ -334,12 +400,16 @@ class _RecurringScreenState extends State<RecurringScreen>
   // ── 候选列表 ─────────────────────────────────────────────
   Widget _buildCandidates() {
     if (_candidates.isEmpty) {
-      return _empty('暂时没发现规律消费\n记账多一些之后 AI 才能找出周期', icon: '🔍');
+      return _empty(
+        title: '暂时没发现规律消费',
+        hint: '记账多一些之后 AI 才能找出周期',
+        emoji: '🔍',
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
         children: [
           for (final c in _candidates) _candidateTile(c),
         ],
@@ -352,48 +422,68 @@ class _RecurringScreenState extends State<RecurringScreen>
     final acc = _accById[c.accountId];
     final confPct = (c.confidence * 100).round();
     final confColor = c.confidence >= 0.9
-        ? Colors.green
+        ? AppColors.expense
         : c.confidence >= 0.7
-            ? Colors.orange
-            : Colors.grey;
+            ? AppColors.warning
+            : AppColors.text3;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text(cat?.displayIcon ?? '📋', style: const TextStyle(fontSize: 22)),
-                const SizedBox(width: 8),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(cat?.displayIcon ?? '📋',
+                      style: const TextStyle(fontSize: 20)),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(cat?.fullName ?? '未分类',
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.text1)),
+                      const SizedBox(height: 2),
                       Text(acc?.name ?? '账户',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          style:
+                              TextStyle(fontSize: 12, color: AppColors.text2)),
                     ],
                   ),
                 ),
-                Text('¥${c.amount.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 12),
+                AmountText(c.amount,
+                    size: AmountSize.card, tone: AmountTone.expense),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 6,
               children: [
-                _chip('每月 ${c.cycleDay} 号', Colors.blue),
-                _chip('${c.sampleCount} 笔历史', Colors.purple),
-                _chip('间隔 ${c.avgIntervalDays.toStringAsFixed(0)}±${c.stddevDays.toStringAsFixed(1)} 天', Colors.teal),
-                _chip('置信度 $confPct%', confColor),
+                _chip('每月 ${c.cycleDay} 号'),
+                _chip('${c.sampleCount} 笔历史'),
+                _chip('间隔 ${c.avgIntervalDays.toStringAsFixed(0)}±${c.stddevDays.toStringAsFixed(1)} 天'),
+                _chip('置信度 $confPct%', color: confColor),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -402,6 +492,7 @@ class _RecurringScreenState extends State<RecurringScreen>
                     // 忽略候选：本地从列表移除即可（下次刷新还会出现）
                     setState(() => _candidates.remove(c));
                   },
+                  style: TextButton.styleFrom(foregroundColor: AppColors.text2),
                   child: const Text('忽略'),
                 ),
                 const SizedBox(width: 8),
@@ -417,30 +508,24 @@ class _RecurringScreenState extends State<RecurringScreen>
     );
   }
 
-  Widget _chip(String t, Color c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+  /// 信息 chip：统一 surfaceAlt 底 + text2 字；[color] 仅给置信度这类
+  /// 语义分级文字上色（高=expense / 中=warning / 低=text3）。
+  Widget _chip(String t, {Color? color}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.1),
+          color: AppColors.surfaceAlt,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(t, style: TextStyle(fontSize: 11, color: c)),
+        child: Text(t,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: color ?? AppColors.text2,
+            )),
       );
 
-  Widget _empty(String msg, {String icon = '✨'}) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(36),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 48)),
-              const SizedBox(height: 12),
-              Text(msg,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600)),
-            ],
-          ),
-        ),
-      );
+  Widget _empty({required String title, required String hint, required String emoji}) =>
+      Center(child: EmptyState(emoji: emoji, title: title, hint: hint, top: 0));
 }
 
 // ── 新建 / 编辑 弹窗 ───────────────────────────────────────────
@@ -547,10 +632,6 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     final result = await showModalBottomSheet<Category>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => CategoryPickerSheet(
         categories: widget.categories,
         selectedId: _category?.id,
@@ -564,10 +645,6 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     final result = await showModalBottomSheet<Account>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => AccountPickerSheet(
         accounts: widget.accounts,
         selectedId: _account?.id,
@@ -576,7 +653,7 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     if (result != null) setState(() => _account = result);
   }
 
-  /// 与金额/备注的 OutlineInputBorder 风格一致的可点选字段
+  /// 与金额/备注输入框同一填充风格的可点选字段
   Widget _pickerField({
     required String label,
     required String emoji,
@@ -587,12 +664,9 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
     final hasValue = value != null;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(12),
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
+        decoration: InputDecoration(labelText: label),
         child: Row(children: [
           Text(emoji, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
@@ -627,7 +701,10 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
             children: [
               Text(
                 widget.init == null ? '新建周期账单' : '编辑周期账单',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text1),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -636,7 +713,6 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: '金额',
-                  border: OutlineInputBorder(),
                   prefixText: '¥ ',
                 ),
               ),
@@ -659,7 +735,7 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Text('每月'),
+                  Text('每月', style: TextStyle(color: AppColors.text2)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Slider(
@@ -671,7 +747,9 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
                       onChanged: (v) => setState(() => _cycleDay = v.round()),
                     ),
                   ),
-                  Text('$_cycleDay 号', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('$_cycleDay 号',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, color: AppColors.text1)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -679,17 +757,17 @@ class _RecurringEditSheetState extends State<_RecurringEditSheet> {
                 controller: _noteCtrl,
                 decoration: const InputDecoration(
                   labelText: '备注 (可选，加密存储)',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: _saving ? null : _save,
                 child: _saving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.onPrimary),
                       )
                     : const Text('保存'),
               ),

@@ -6,9 +6,9 @@ import '../models/budget.dart';
 import '../models/category.dart';
 import '../services/api_service.dart';
 import '../models/bill.dart';
-import '../widgets/glass.dart';
+import '../widgets/chart_kit.dart';
+import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart' show CategoryPickerSheet;
-import 'profile_screen.dart';
 
 /// 预算页面 —— 重新设计：
 /// - 只按 *分类* 设预算，"总预算" = 所有分类预算之和（自动算）
@@ -191,14 +191,17 @@ class _BudgetsScreenState extends State<BudgetsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // pushed 页面必须自带背景：透明 Scaffold 在原生端会透出系统窗口黑底
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.bg,
       appBar: AuraAppBar(
         title: '预算管理',
-        avatarTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        ),
+        actions: [
+          HeaderAddButton(
+            tooltip: '新增预算',
+            onPressed: () => _openSheet(),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           indicatorColor: AppColors.primary,
@@ -210,12 +213,14 @@ class _BudgetsScreenState extends State<BudgetsScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tab,
-        children: [
-          _currentTab(),
-          _historyTab(),
-        ],
+      body: AuraBackground(
+        child: TabBarView(
+          controller: _tab,
+          children: [
+            _currentTab(),
+            _historyTab(),
+          ],
+        ),
       ),
     );
   }
@@ -347,24 +352,10 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               ),
           ]),
           const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('¥',
-                  style: TextStyle(
-                      color: AppColors.onPrimaryGradient, fontSize: 18)),
-              const SizedBox(width: 2),
-              Text(
-                fmtMoneyInt(_totalBudget),
-                style: TextStyle(
-                    color: AppColors.onPrimaryGradient,
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5),
-              ),
-            ],
-          ),
+          AmountText(_totalBudget,
+              size: AmountSize.hero,
+              decimals: 0,
+              color: AppColors.onPrimaryGradient),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -374,7 +365,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               backgroundColor:
                   AppColors.onPrimaryGradient.withValues(alpha: 0.18),
               valueColor: AlwaysStoppedAnimation<Color>(
-                  _isOverBudget ? AppColors.expense : Colors.white),
+                  _isOverBudget ? AppColors.expense : AppColors.onPrimaryGradient),
             ),
           ),
           const SizedBox(height: 10),
@@ -421,12 +412,12 @@ class _BudgetsScreenState extends State<BudgetsScreen>
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.warning_amber_rounded,
-                    size: 14, color: Colors.white),
+                    size: 14, color: AppColors.onPrimaryGradient),
                 const SizedBox(width: 4),
                 Text(
                   '已超支',
                   style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.onPrimaryGradient,
                       fontSize: 11,
                       fontWeight: FontWeight.w600),
                 ),
@@ -455,29 +446,6 @@ class _BudgetsScreenState extends State<BudgetsScreen>
             Text('· ${items.length}',
                 style: TextStyle(
                     fontSize: 12, color: AppColors.text3)),
-            const Spacer(),
-            InkWell(
-              onTap: () => _openSheet(),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.add_rounded,
-                      size: 14, color: AppColors.primary),
-                  const SizedBox(width: 2),
-                  Text('新增',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ),
           ]),
         ),
         if (items.isEmpty)
@@ -765,19 +733,14 @@ class _BudgetsScreenState extends State<BudgetsScreen>
                   ),
                 ),
                 lineTouchData: LineTouchData(
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (_) => AppColors.text1,
+                  touchTooltipData: auraLineTooltipData(
                     getTooltipItems: (touched) => touched.map((t) {
                       final i = t.x.toInt();
                       final isBudget = t.barIndex == 0;
                       final p = _history[i];
                       return LineTooltipItem(
                         '${p.label}\n${isBudget ? "预算" : "实际"} ${fmtMoneyInt(t.y)}',
-                        TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        auraTooltipStyle().textStyle,
                       );
                     }).toList(),
                   ),
@@ -1058,9 +1021,10 @@ class _BudgetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = budget.progress.clamp(0.0, 1.0);
-    final color = budget.isOverBudget
-        ? AppColors.expense
-        : (pct > 0.8 ? AppColors.warning : AppColors.primary);
+    // 颜色克制：进度条仅「正常=primary / 超支=expense」两种状态；
+    // 百分比、已用等文字一律中性色，不随状态染色
+    final barColor =
+        budget.isOverBudget ? AppColors.expense : AppColors.primary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1078,7 +1042,7 @@ class _BudgetCard extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
@@ -1107,7 +1071,9 @@ class _BudgetCard extends StatelessWidget {
               '${(budget.progress * 100).toStringAsFixed(0)}%',
               style: TextStyle(
                   fontSize: 13,
-                  color: color,
+                  color: budget.isOverBudget
+                      ? AppColors.expense
+                      : AppColors.text1,
                   fontWeight: FontWeight.w700),
             ),
             PopupMenuButton<String>(
@@ -1142,21 +1108,14 @@ class _BudgetCard extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 6,
-              backgroundColor: color.withValues(alpha: 0.10),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
+          // 单一用量条：轨道 + 已用部分；多人时按花费占比在已用部分内分段
+          _usageBar(pct, barColor),
           const SizedBox(height: 6),
           Row(children: [
             Text('已用 ${fmtMoney(budget.spent)}',
                 style: TextStyle(
                     fontSize: 11,
-                    color: color,
+                    color: AppColors.text2,
                     fontWeight: FontWeight.w600)),
             const Spacer(),
             Text(
@@ -1171,40 +1130,55 @@ class _BudgetCard extends StatelessWidget {
                   fontWeight: FontWeight.w500),
             ),
           ]),
-          // 家庭共同预算：≥2 人有花费时显示「谁花了多少」拆解
+          // 家庭共同预算：≥2 人有花费时显示成员图例（分段已并入上方用量条）
           if (budget.members.length >= 2) ...[
             const SizedBox(height: 8),
-            _memberSplit(color),
+            _memberLegend(barColor),
           ],
         ],
       ),
     );
   }
 
-  /// 成员花费拆解：分段条 + 名字·金额（按花费降序，颜色透明度递减区分）
-  Widget _memberSplit(Color color) {
+  /// 分段色：同一色相透明度递减（0.85 / 0.55 / 0.25…），区分成员不引入新色
+  Color _segColor(Color base, int i) =>
+      base.withValues(alpha: (0.85 - i * 0.3).clamp(0.25, 0.85));
+
+  /// 用量条：轨道=surfaceAlt，已用部分=barColor；
+  /// 多人共同预算时，已用部分按成员花费占比分段（一根条讲清两件事）
+  Widget _usageBar(double pct, Color barColor) {
+    final members = budget.members;
+    final total = members.fold<double>(0, (s, m) => s + m.spent);
+    final multi = members.length >= 2 && total > 0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        height: 6,
+        child: Stack(children: [
+          Positioned.fill(child: Container(color: AppColors.surfaceAlt)),
+          FractionallySizedBox(
+            widthFactor: pct,
+            alignment: Alignment.centerLeft,
+            child: multi
+                ? Row(children: [
+                    for (var i = 0; i < members.length; i++)
+                      Expanded(
+                        flex: (members[i].spent / total * 1000).round(),
+                        child: Container(color: _segColor(barColor, i)),
+                      ),
+                  ])
+                : Container(color: barColor),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 成员图例：圆点 + 名字·金额（与用量条分段同色系）
+  Widget _memberLegend(Color color) {
     final total = budget.members.fold<double>(0, (s, m) => s + m.spent);
     if (total <= 0) return const SizedBox.shrink();
-    Color segColor(int i) =>
-        color.withValues(alpha: (0.85 - i * 0.3).clamp(0.25, 0.85));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: SizedBox(
-            height: 3,
-            child: Row(children: [
-              for (var i = 0; i < budget.members.length; i++)
-                Expanded(
-                  flex: (budget.members[i].spent / total * 1000).round(),
-                  child: Container(color: segColor(i)),
-                ),
-            ]),
-          ),
-        ),
-        const SizedBox(height: 5),
-        Wrap(
+    return Wrap(
           spacing: 12,
           runSpacing: 2,
           children: [
@@ -1214,7 +1188,7 @@ class _BudgetCard extends StatelessWidget {
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                      color: segColor(i), shape: BoxShape.circle),
+                      color: _segColor(color, i), shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -1223,8 +1197,6 @@ class _BudgetCard extends StatelessWidget {
                 ),
               ]),
           ],
-        ),
-      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_service.dart';
 import '../core/refresh_bus.dart';
@@ -126,7 +127,7 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = _isDark;
-    final fillBase = tint ?? (dark ? const Color(0xFF22211F) : Colors.white);
+    final fillBase = tint ?? (dark ? const Color(0xFF22211F) : Colors.white); // design:ok 玻璃拟态实现色
     final fillOpacity = opacity ?? (dark ? 0.42 : 0.62);
     final br = BorderRadius.circular(radius);
 
@@ -141,8 +142,8 @@ class GlassCard extends StatelessWidget {
             border: border
                 ? Border.all(
                     color: dark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.white.withValues(alpha: 0.55),
+                        ? Colors.white.withValues(alpha: 0.08) // design:ok 玻璃拟态实现色
+                        : Colors.white.withValues(alpha: 0.55), // design:ok 玻璃拟态实现色
                     width: 1,
                   )
                 : null,
@@ -215,7 +216,7 @@ class GlassNavBar extends StatelessWidget {
         // 阴影加强 + 深色描边，让胶囊从背景里"浮"出来、边界清晰
         boxShadow: [
           BoxShadow(
-            color: (dark ? Colors.black : const Color(0xFF1B3022))
+            color: (dark ? Colors.black : const Color(0xFF1B3022)) // design:ok 玻璃拟态实现色
                 .withValues(alpha: dark ? 0.45 : 0.16),
             blurRadius: 28,
             offset: const Offset(0, 10),
@@ -230,12 +231,12 @@ class GlassNavBar extends StatelessWidget {
             height: 64,
             decoration: BoxDecoration(
               // 接近实底，避免下方内容透上来影响可读性
-              color: (dark ? const Color(0xFF1A1A1A) : Colors.white)
+              color: (dark ? const Color(0xFF1A1A1A) : Colors.white) // design:ok 玻璃拟态实现色
                   .withValues(alpha: dark ? 0.90 : 0.95),
               borderRadius: br,
               border: Border.all(
                 color: dark
-                    ? Colors.white.withValues(alpha: 0.12)
+                    ? Colors.white.withValues(alpha: 0.12) // design:ok 玻璃拟态实现色
                     : AppColors.border.withValues(alpha: 0.7),
                 width: 1,
               ),
@@ -290,7 +291,7 @@ class GlassNavBar extends StatelessWidget {
             shape: BoxShape.circle,
             // 白描边把圆钮从胶囊上"切"出来，浮起感更干净
             border: Border.all(
-                color: _isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                color: _isDark ? const Color(0xFF1A1A1A) : Colors.white, // design:ok 玻璃拟态实现色
                 width: 3),
             boxShadow: [
               BoxShadow(
@@ -316,7 +317,7 @@ class GlassNavBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration: Motion.base,
               curve: Curves.easeOut,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
@@ -399,7 +400,7 @@ class _ProfileAvatarState extends State<ProfileAvatar> {
             end: Alignment.bottomRight,
           ),
           border: Border.all(
-            color: Colors.white.withValues(alpha: _isDark ? 0.14 : 0.65),
+            color: Colors.white.withValues(alpha: _isDark ? 0.14 : 0.65), // design:ok 玻璃拟态实现色
             width: 1.5,
           ),
           boxShadow: AppTheme.ambientShadow(
@@ -463,10 +464,10 @@ class AiButton extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: (_isDark ? Colors.white : Colors.white)
+                  color: (_isDark ? Colors.white : Colors.white) // design:ok 玻璃拟态实现色
                       .withValues(alpha: _isDark ? 0.08 : 0.72),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: _isDark ? 0.12 : 0.6),
+                    color: Colors.white.withValues(alpha: _isDark ? 0.12 : 0.6), // design:ok 玻璃拟态实现色
                     width: 1,
                   ),
                 ),
