@@ -24,6 +24,10 @@ import 'budgets_screen.dart';
 import 'tools/tools_screen.dart';
 import 'tools/stock_screen.dart';
 import 'ai_model_config_screen.dart';
+import 'forecast_screen.dart';
+import 'notifications_screen.dart';
+import 'reconcile_screen.dart';
+import 'auto_bookkeeping_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -425,7 +429,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       ('📋', 'AI 订阅', () => _push(const RecurringScreen())),
       ('📊', 'AI 月报', () => _push(const MonthlyReportScreen())),
       ('🤖', 'AI 助手', _openChat),
-      // 行3：其他
+      // 行3：智能管家
+      ('📈', '现金流', () => _push(const ForecastScreen())),
+      ('🔔', '通知', () => _push(const NotificationsScreen())),
+      ('🧾', '对账', () => _push(const ReconcileScreen())),
+      ('⚡', '自动记账', () => _push(const AutoBookkeepingScreen())),
+      // 行4：其他
       ('💼', '持仓', () => _push(const StockScreen())),
       ('🤝', '借贷', () => _push(const LoansScreen())),
       ('🧰', '工具箱', () => _push(const ToolsScreen())),

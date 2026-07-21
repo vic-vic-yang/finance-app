@@ -29,6 +29,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+          端侧自动记账：监听支付 / 银行 App 通知。
+          需在系统「通知使用权」设置页由用户手动授权后才生效；
+          解析全程在本机完成，不上传通知原文。
+        -->
+        <service
+            android:name=".AutoBookkeepingListenerService"
+            android:label="司库 · 自动记账"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

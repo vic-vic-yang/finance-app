@@ -16,6 +16,7 @@ import 'services/api_service.dart';
 import 'services/llm_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/pending_dek_resolver.dart';
+import 'services/auto_bookkeeping_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,8 @@ void main() async {
   // 按当前登录账号加载其 AI 模型配置（未登录则为空）
   final savedUser = await AuthService.getUser();
   await LlmConfigService.instance.load(savedUser?['id'] as String?);
+  // 启动自动记账通知监听（仅 Android 生效；幂等，未登录/未授权时静默）
+  AutoBookkeepingService.instance.start();
   runApp(const FinanceApp());
 }
 
