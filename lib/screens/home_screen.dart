@@ -13,6 +13,8 @@ import '../models/insight.dart';
 import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/forecast_service.dart';
+import '../services/notification_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/chart_kit.dart';
 import '../widgets/entrance.dart';
@@ -21,8 +23,11 @@ import 'account_detail_screen.dart';
 import 'chat_screen.dart';
 import 'accounts_screen.dart';
 import 'cfo_screen.dart';
+import 'forecast_screen.dart';
 import 'ledgers_screen.dart';
+import 'notifications_screen.dart';
 import 'recurring_screen.dart';
+import 'smart_hub_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onSwitchTab});
@@ -74,6 +79,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// CFO 复盘待处理建议数量
   int _cfoCount = 0;
+
+  /// 通知中心未读数（铃铛角标；0 不显示）
+  int _unreadCount = 0;
+
+  /// 现金流预测：月末净资产预测值（静默拉取，失败为 null → 入口行不显示）
+  double? _monthEndProjected;
 
   /// 是否存在 critical 级 CFO 待办（用于首页卡醒目化）
   bool _cfoHasCritical = false;
@@ -216,6 +227,38 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+    // 铃铛未读数 / 现金流预测：静默拉取，失败不影响首页其他数据
+    _loadUnreadCount();
+    _loadForecast();
+  }
+
+  /// 通知未读数（角标数据源）。失败时保持原值，不清角标。
+  Future<void> _loadUnreadCount() async {
+    try {
+      final res = await NotificationService.unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = (res['count'] as num?)?.toInt() ?? 0);
+    } catch (_) {}
+  }
+
+  /// 月末结余预测（结余卡下方小字链接）。失败 → null，入口行不显示。
+  Future<void> _loadForecast() async {
+    try {
+      final f = await ForecastService.getForecast();
+      if (!mounted) return;
+      setState(() => _monthEndProjected = f.monthEnd.projected);
+    } catch (_) {
+      if (mounted) setState(() => _monthEndProjected = null);
+    }
+  }
+
+  /// 打开通知中心；返回后刷新角标
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    if (mounted) _loadUnreadCount();
   }
 
   @override
@@ -233,7 +276,18 @@ class _HomeScreenState extends State<HomeScreen>
       var order = 0;
       slivers.add(SliverPadding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-        sliver: SliverToBoxAdapter(child: _entrance(order++, _summaryCard())),
+        sliver: SliverToBoxAdapter(
+          child: _entrance(
+            order++,
+            Column(
+              children: [
+                _summaryCard(),
+                // 现金流预测入口：静默拉取，失败不显示
+                if (_monthEndProjected != null) _forecastLink(),
+              ],
+            ),
+          ),
+        ),
       ));
       // 我的账户紧跟结余卡（净资产拆解已整合进统计页）
       if (_accounts.isNotEmpty) {
@@ -256,8 +310,11 @@ class _HomeScreenState extends State<HomeScreen>
       if (_insights.isNotEmpty || _cfoCount > 0) {
         slivers.add(_sectionTitleWithAction(
           '🤖 AI 管家',
-          '查看全部',
-          _showAllInsightsSheet,
+          '全部',
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SmartHubScreen()),
+          ),
           entranceIndex: order++,
         ));
         slivers.add(
@@ -281,7 +338,34 @@ class _HomeScreenState extends State<HomeScreen>
     final l = _currentLedger;
     return AuraSliverAppBar(
       actions: [
-        // 导入流水入口收进 我的→AI 导入，顶部只留司库助手（裸 icon，命中区放大）
+        // 通知中心铃铛（未读小红点角标）+ 司库助手（裸 icon，命中区放大）
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: GestureDetector(
+            onTap: _openNotifications,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Stack(clipBehavior: Clip.none, children: [
+                Icon(Icons.notifications_outlined,
+                    size: 22, color: AppColors.text1),
+                if (_unreadCount > 0)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        ),
         if (_currentLedger != null && _currentLedger!.id.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -400,8 +484,26 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         children: [
           if (_cfoCount > 0) _cfoStrip(),
-          // 只展示前 4 条，更多的从右上「查看全部」进弹层看
+          // 只展示前 4 条，更多的从流底部入口进弹层看
           for (final ins in _insights.take(4)) _insightCard(ins),
+          if (_insights.length > 4)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _showAllInsightsSheet,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('查看全部 ${_insights.length} 条洞察',
+                        style:
+                            TextStyle(fontSize: 12, color: AppColors.text3)),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 14, color: AppColors.text3),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -741,6 +843,34 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// 结余卡下方：月末结余预测小字链接（数据静默拉取，失败不显示这行）
+  Widget _forecastLink() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ForecastScreen()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+        child: Row(children: [
+          Text('预计月末结余 ',
+              style: TextStyle(fontSize: 12, color: AppColors.text2)),
+          Text(fmtMoney(_monthEndProjected!),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.text2)),
+          Text(' · 查看预测',
+              style: TextStyle(fontSize: 12, color: AppColors.text2)),
+          Icon(Icons.chevron_right_rounded,
+              size: 14, color: AppColors.primary),
+        ]),
+      ),
+    );
+  }
+
+  /// AI 管家区标题右侧：智能管家聚合页入口（克制的小字链接）
   /// CFO 复盘条：并入 AI 管家流的第一条（同洞察卡语言：surface + 左色条）
   Widget _cfoStrip() {
     final accent =
@@ -817,9 +947,11 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // 合计金额已上移到 hero 卡「净资产」（全局口径），此处标题行只保留
-    // 口径标签（我的 / 共享 / 家庭），避免一屏两个相同大数字重复；
+    // 口径标签（我的 / 共享 / 家庭）+ 当前口径合计小字，避免一屏两个大数字；
     // 右侧入口由外层 section 标题的「我的账户 · 管理」承担。
     final showOthersCard = showTabs && _assetTab == 2 && hasOthers;
+    final tabTotal = visibleList.fold<double>(0, (s, a) => s + a.balance) +
+        (showOthersCard ? _othersTotal : 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -829,6 +961,12 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(children: [
             Text(showTabs ? _assetLabel() : '总资产',
                 style: TextStyle(color: AppColors.text2, fontSize: 13)),
+            const SizedBox(width: 8),
+            Text(fmtMoney(tabTotal),
+                style: TextStyle(
+                    color: AppColors.text1,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
           ]),
         ),
         if (showTabs)
@@ -908,12 +1046,14 @@ class _HomeScreenState extends State<HomeScreen>
     String t,
     String actionText,
     VoidCallback onTap, {
+    Widget? trailing,
     int? entranceIndex,
   }) {
     final child = SectionHeader(
       title: t,
       actionLabel: actionText,
       onTap: onTap,
+      trailing: trailing,
       top: 20,
       bottom: 10,
     );

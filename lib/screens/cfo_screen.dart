@@ -19,6 +19,16 @@ class _CfoScreenState extends State<CfoScreen> {
   List<Proposal> _items = [];
   final Set<String> _busy = {};
 
+  /// 自动执行规则：actionType -> enabled（未建记录视为 false）
+  Map<String, bool> _autoRules = {};
+  final Set<String> _ruleBusy = {};
+
+  /// 可自动化的动作类型（与后端白名单一致；高危动作永不在此列）
+  static const _ruleMeta = <String, (String, String)>{
+    'adjust_budget': ('调整预算', '超支预警给出的调额建议自动生效'),
+    'recategorize_bill': ('智能改分类', '明显错分的账单自动归入正确分类'),
+  };
+
   @override
   void initState() {
     super.initState();
@@ -41,7 +51,36 @@ class _CfoScreenState extends State<CfoScreen> {
     } catch (_) {
       /* 保持空 */
     }
+    try {
+      final rules = await ApiService.cfoAutoRules();
+      if (rules is List) {
+        _autoRules = {
+          for (final r in rules)
+            if (r is Map && r['actionType'] is String)
+              r['actionType'] as String: r['enabled'] == true,
+        };
+      }
+    } catch (_) {
+      /* 规则加载失败不阻塞提议列表 */
+    }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _toggleRule(String actionType, bool enabled) async {
+    setState(() {
+      _ruleBusy.add(actionType);
+      _autoRules[actionType] = enabled; // 乐观更新
+    });
+    try {
+      await ApiService.cfoSetAutoRule(actionType, enabled);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _autoRules[actionType] = !enabled); // 失败回滚
+        _toast('设置失败，请重试');
+      }
+    } finally {
+      if (mounted) setState(() => _ruleBusy.remove(actionType));
+    }
   }
 
   Future<void> _decide(Proposal p, String action) async {
@@ -128,19 +167,77 @@ class _CfoScreenState extends State<CfoScreen> {
       body: AuraBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : _items.isEmpty
-                ? const Center(
-                    child: EmptyState(
-                        emoji: '✅', title: '目前一切正常', top: 0))
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _items.length,
-                      itemBuilder: (_, i) => _card(_items[i]),
-                    ),
-                  ),
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _autoRulesCard(),
+                    const SizedBox(height: 12),
+                    if (_items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 32),
+                        child: EmptyState(
+                            emoji: '✅', title: '目前一切正常', top: 0),
+                      )
+                    else
+                      ..._items.map(_card),
+                  ],
+                ),
+              ),
       ),
+    );
+  }
+
+  /// 「自动执行」区块：白名单动作开关 + 留痕说明
+  Widget _autoRulesCard() {
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('自动执行',
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.text1)),
+        const SizedBox(height: 4),
+        Text('低风险提议将自动执行并在此留痕，高危操作永远需要你确认',
+            style: TextStyle(fontSize: 12, color: AppColors.text3)),
+        const SizedBox(height: 8),
+        for (final entry in _ruleMeta.entries) ...[
+          _ruleRow(entry.key, entry.value.$1, entry.value.$2),
+          if (entry.key != _ruleMeta.keys.last)
+            Divider(height: 1, color: AppColors.border),
+        ],
+      ]),
+    );
+  }
+
+  Widget _ruleRow(String actionType, String label, String desc) {
+    final enabled = _autoRules[actionType] ?? false;
+    final busy = _ruleBusy.contains(actionType);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(children: [
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.text1)),
+            const SizedBox(height: 2),
+            Text(desc, style: TextStyle(fontSize: 12, color: AppColors.text2)),
+          ]),
+        ),
+        Opacity(
+          opacity: busy ? 0.5 : 1,
+          child: Switch(
+            value: enabled,
+            onChanged: busy ? null : (v) => _toggleRule(actionType, v),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -168,22 +265,45 @@ class _CfoScreenState extends State<CfoScreen> {
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: AppColors.text1))),
+          if (p.autoExecuted) _autoBadge(),
         ]),
         const SizedBox(height: 6),
         Text(p.body, style: TextStyle(fontSize: 13, color: AppColors.text2)),
-        const SizedBox(height: 10),
-        // 操作行：小胶囊（同意=实心主色，稍后/忽略=ghost），克制不占版面
-        Row(children: [
-          _pill(
-            busy ? '处理中…' : '同意',
-            filled: true,
-            onTap: busy ? null : () => _decide(p, 'approve'),
-          ),
-          const SizedBox(width: 8),
-          _pill('稍后', onTap: busy ? null : () => _decide(p, 'snooze')),
-          const SizedBox(width: 8),
-          _pill('忽略', onTap: busy ? null : () => _decide(p, 'dismiss')),
-        ]),
+        if (!p.autoExecuted) ...[
+          const SizedBox(height: 10),
+          // 操作行：小胶囊（同意=实心主色，稍后/忽略=ghost），克制不占版面
+          Row(children: [
+            _pill(
+              busy ? '处理中…' : '同意',
+              filled: true,
+              onTap: busy ? null : () => _decide(p, 'approve'),
+            ),
+            const SizedBox(width: 8),
+            _pill('稍后', onTap: busy ? null : () => _decide(p, 'snooze')),
+            const SizedBox(width: 8),
+            _pill('忽略', onTap: busy ? null : () => _decide(p, 'dismiss')),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  /// 「已自动执行」留痕标识：主色浅底小胶囊
+  Widget _autoBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.bolt_rounded, size: 12, color: AppColors.primary),
+        const SizedBox(width: 2),
+        Text('已自动执行',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary)),
       ]),
     );
   }

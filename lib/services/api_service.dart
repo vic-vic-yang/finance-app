@@ -440,6 +440,7 @@ class ApiService {
     double? maxAmount,
     String? isTransfer,
     String? source,
+    String? includeStock,
   }) =>
       _get('/bills', params: {
         'page': page.toString(),
@@ -460,6 +461,7 @@ class ApiService {
         if (maxAmount != null) 'maxAmount': maxAmount.toString(),
         if (isTransfer != null) 'isTransfer': isTransfer,
         if (source != null) 'source': source,
+        if (includeStock != null) 'includeStock': includeStock,
       });
 
   static Future<Map<String, dynamic>> createBill({
@@ -786,6 +788,14 @@ class ApiService {
   /// 对某条建议做决定：approve | dismiss | snooze | resolve
   static Future<Map<String, dynamic>> cfoDecide(String id, String action) =>
       _post('/cfo/proposals/$id/decide', {'action': action});
+
+  /// CFO 自动执行规则：后端返回 [{actionType, enabled}]（白名单动作）
+  static Future<dynamic> cfoAutoRules() => _getRaw('/cfo/auto-rules');
+
+  /// 开关某动作类型的自动执行（仅白名单内动作；高危动作后端 400 拒绝）
+  static Future<Map<String, dynamic>> cfoSetAutoRule(
+          String actionType, bool enabled) =>
+      _put('/cfo/auto-rules/$actionType', {'enabled': enabled});
 
   // ─── 借贷往来 ─────────────────────────────────────────────
   static Future<List<dynamic>> getLoans() async {

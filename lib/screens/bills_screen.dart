@@ -12,6 +12,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/pending_dek_resolver.dart';
 import 'add_bill_screen.dart';
+import 'recurring_screen.dart';
 
 class BillsScreen extends StatefulWidget {
   /// true=作为底部 tab（左上头像、透明底）；false=二级页（返回箭头、bg 底）
@@ -288,6 +289,22 @@ class _BillsScreenState extends State<BillsScreen>
       appBar: AuraAppBar(
         title: '账单',
         actions: [
+          // 周期账单入口（订阅 / 固定扣款管理）
+          Padding(
+            padding: const EdgeInsets.only(right: 2),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RecurringScreen()),
+              ),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Icon(Icons.event_repeat_outlined,
+                    size: 22, color: AppColors.text1),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: _filterEntryButton(),

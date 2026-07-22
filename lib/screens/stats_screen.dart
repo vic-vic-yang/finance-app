@@ -4,11 +4,15 @@ import 'package:intl/intl.dart';
 import '../core/refresh_bus.dart';
 import '../core/theme.dart';
 import '../services/api_service.dart';
+import '../services/health_service.dart';
 import '../models/bill.dart';
 import '../widgets/chart_kit.dart';
 import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart';
 import 'bills_screen.dart';
+import 'health_screen.dart';
+import 'merchant_insights_screen.dart';
+import 'monthly_report_screen.dart';
 import 'tools/stock_screen.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -54,6 +58,9 @@ class _StatsScreenState extends State<StatsScreen>
 
   // 股票持仓（统计卡片用，仅 held=true；与股票页同一接口/口径）
   List<Map<String, dynamic>> _stockHoldings = [];
+
+  /// 财务健康分（静默拉取，失败为 null → 小卡不显示）
+  int? _healthScore;
 
   @override
   void initState() {
@@ -188,6 +195,11 @@ class _StatsScreenState extends State<StatsScreen>
             .toList();
       });
     }).catchError((_) {});
+    // 财务健康分（best-effort，失败则小卡不显示）
+    HealthService.getScore().then((s) {
+      if (!mounted) return;
+      setState(() => _healthScore = s.score);
+    }).catchError((_) {});
   }
 
   void _prev() {
@@ -276,6 +288,11 @@ class _StatsScreenState extends State<StatsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 财务健康分小卡：静默拉取，失败不显示
+                    if (_healthScore != null) ...[
+                      _healthCard(),
+                      const SizedBox(height: 16),
+                    ],
                     _assetCard(),
                     const SizedBox(height: 16),
                     _summaryRow(),
@@ -335,6 +352,21 @@ class _StatsScreenState extends State<StatsScreen>
           _navArrow(Icons.chevron_right_rounded,
               _canGoNext ? _next : null,
               enabled: _canGoNext),
+          // 月报入口：贴着月份切换器，语义自然衔接
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const MonthlyReportScreen()),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Text('月报',
+                  style:
+                      TextStyle(fontSize: 12.5, color: AppColors.text2)),
+            ),
+          ),
         ]),
       );
 
@@ -350,6 +382,36 @@ class _StatsScreenState extends State<StatsScreen>
             size: 24,
             color: enabled ? AppColors.text2 : AppColors.border),
       ),
+    );
+  }
+
+  // ── 财务健康分小卡（点击进健康分明细页） ──────────────────────
+  Widget _healthCard() {
+    return GlassCard(
+      radius: 14,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const HealthScreen()),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(children: [
+        const Text('🏥', style: TextStyle(fontSize: 20)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text('本月财务健康分',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.text2)),
+        ),
+        Text('${_healthScore!} 分',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary)),
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.text3),
+      ]),
     );
   }
 
@@ -937,7 +999,8 @@ class _StatsScreenState extends State<StatsScreen>
       radius: 16,
       padding: EdgeInsets.zero,
       child: Column(
-        children: stats.asMap().entries.map((e) {
+        children: [
+          ...stats.asMap().entries.map((e) {
           final i = e.key;
           final s = e.value;
           final pct = s.total / total;
@@ -1007,7 +1070,29 @@ class _StatsScreenState extends State<StatsScreen>
               if (!isLast) const Divider(height: 1, indent: 16),
             ],
           );
-        }).toList(),
+          }),
+          const Divider(height: 1, indent: 16),
+          // 商户画像入口：从分类延伸到「钱花在哪几家店」
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const MerchantInsightsScreen()),
+            ),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(children: [
+                Text('看看常去的商户',
+                    style:
+                        TextStyle(fontSize: 12, color: AppColors.text3)),
+                Icon(Icons.chevron_right_rounded,
+                    size: 14, color: AppColors.text3),
+              ]),
+            ),
+          ),
+        ],
       ),
     );
   }

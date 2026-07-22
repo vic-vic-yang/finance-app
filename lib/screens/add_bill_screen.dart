@@ -647,6 +647,8 @@ class _AddBillScreenState extends State<AddBillScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 12),
+                      // AI 导入轻提示条：仅新建账单时显示（编辑态不打扰）
+                      if (widget.bill == null) _aiImportHint(),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _isTransfer
@@ -706,6 +708,37 @@ class _AddBillScreenState extends State<AddBillScreen>
   }
 
   // ── Header ────────────────────────────────────────────────────
+  /// AI 智能导入轻提示条：primaryLight 底 + 小字说明，点击进 AI 导入
+  Widget _aiImportHint() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AiImportsScreen()),
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            const Text('📷', style: TextStyle(fontSize: 15)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('拍照 / 文件导入，AI 自动记账',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.primary)),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 16, color: AppColors.primary),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _header(Color color) {
     // 渐变头上的前景：按渐变底色自动算对比色，次级层次用 alpha 派生
     final fg = _onHeaderFg;

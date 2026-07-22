@@ -116,7 +116,7 @@ class _ForecastScreenState extends State<ForecastScreen> {
                       children: [
                         _heroCard(_data!.monthEnd),
                         const SizedBox(height: 10),
-                        _methodologyNote(),
+                        _methodologyNote(_data!.monthEnd),
                         SectionHeader(
                           title: '未来 30 天扣款',
                           horizontal: 0,
@@ -197,14 +197,29 @@ class _ForecastScreenState extends State<ForecastScreen> {
               size: AmountSize.hero, decimals: 0, color: onCard),
           const SizedBox(height: 14),
           _heroBreakdownRow('当前净资产', m.current, onCard),
-          const SizedBox(height: 6),
-          _heroBreakdownRow(
-            '日均净流入 × 剩余 ${m.remainingDays} 天',
-            m.avgDailyNetInflow * m.remainingDays,
-            onCard,
-          ),
-          const SizedBox(height: 6),
-          _heroBreakdownRow('本月剩余周期账单净额', m.remainingRecurringNet, onCard),
+          if (m.isMonthly) ...[
+            const SizedBox(height: 6),
+            _heroBreakdownRow(
+              '预计剩余收入（固定收入未到账部分）',
+              m.remainingIncome ?? 0,
+              onCard,
+            ),
+            const SizedBox(height: 6),
+            _heroBreakdownRow(
+              '预计剩余支出（剩余 ${m.remainingDays} 天）',
+              -(m.remainingExpense ?? 0),
+              onCard,
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            _heroBreakdownRow(
+              '日均净流入 × 剩余 ${m.remainingDays} 天',
+              m.avgDailyNetInflow * m.remainingDays,
+              onCard,
+            ),
+            const SizedBox(height: 6),
+            _heroBreakdownRow('本月剩余周期账单净额', m.remainingRecurringNet, onCard),
+          ],
         ],
       ),
     );
@@ -233,9 +248,15 @@ class _ForecastScreenState extends State<ForecastScreen> {
   }
 
   /// 口径说明小字
-  Widget _methodologyNote() {
+  Widget _methodologyNote(MonthEndNetWorth m) {
+    final text = m.isMonthly
+        ? '预测口径：当前净资产 ＋ 预计剩余收入 − 预计剩余支出。'
+            '收入按近 ${m.monthsSampled} 个完整月识别出的固定收入项（同分类同金额）是否到账来预期，一次性收入不计；'
+            '支出按历史月均与本月节奏取大者。均不含转账与股票纸面盈亏。'
+        : '预测口径：当前净资产 ＋ 本月剩余天数 × 近 30 日日均净流入 ＋ 本月剩余周期账单净额；收支均不含转账与股票纸面盈亏。'
+            '（暂无完整月历史，累积数据后将切换为月度模式预测）';
     return Text(
-      '预测口径：当前净资产 ＋ 本月剩余天数 × 近 30 日日均净流入 ＋ 本月剩余周期账单净额；收支均不含转账与股票纸面盈亏。',
+      text,
       style: TextStyle(fontSize: 11, height: 1.5, color: AppColors.text3),
     );
   }

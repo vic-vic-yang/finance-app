@@ -11,6 +11,7 @@ import '../models/bill.dart';
 import '../services/api_service.dart';
 import 'add_bill_screen.dart';
 import 'accounts_screen.dart';
+import 'reconcile_screen.dart';
 
 class AccountDetailScreen extends StatefulWidget {
   const AccountDetailScreen({super.key, required this.accountId});
@@ -149,6 +150,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         accountId: widget.accountId,
         startDate: _startDate,
         endDate: _endDate,
+        includeStock: 'true', // 账户余额轨迹需要看到每日股票结算
       );
       if (!mounted) return;
       setState(() {
@@ -177,6 +179,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         accountId: widget.accountId,
         startDate: _startDate,
         endDate: _endDate,
+        includeStock: 'true',
       );
       if (!mounted) return;
       final more = (res['bills'] as List? ?? [])
@@ -441,8 +444,16 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             ),
           ],
         ),
-        // 右上=编辑账户（校准余额挪到 hero 卡金额旁）
+        // 右上=对账中心 + 编辑账户（校准余额挪到 hero 卡金额旁）
         actions: [
+          IconButton(
+            tooltip: '对账中心',
+            icon: Icon(Icons.fact_check_outlined, color: AppColors.text1),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReconcileScreen()),
+            ),
+          ),
           IconButton(
             tooltip: '编辑账户',
             icon: Icon(Icons.edit_outlined, color: AppColors.text1),

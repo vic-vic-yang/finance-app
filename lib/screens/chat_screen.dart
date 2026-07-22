@@ -45,10 +45,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   static const _suggestions = <String>[
-    '这个月花了多少？',
-    '哪个分类花得最多？',
-    '比上月多还是少？',
-    '本月预算用得怎么样？',
+    '上个月哪类花最多',
+    '预算还剩多少',
+    '储蓄目标进度',
+    '我有多少负债',
   ];
 
   @override
@@ -609,33 +609,55 @@ class _ChatScreenState extends State<ChatScreen> {
           color: AppColors.surface,
           border: Border(top: BorderSide(color: AppColors.border, width: 0.6)),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _ctrl,
-                enabled: !_busy,
-                minLines: 1,
-                maxLines: 3,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                // 样式交给全局 InputDecorationTheme（填充式 surfaceAlt + 聚焦描边），
-                // 这里只保留尺寸微调，不再自设 border
-                decoration: const InputDecoration(
-                  hintText: '问问你的财务情况…',
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
+            // 快捷提问 chips：点击直接发送（_send 内部会在 _busy 时忽略）
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _suggestions.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final s = _suggestions[i];
+                  return ActionChip(
+                    label: Text(s),
+                    onPressed: _busy ? null : () => _send(s),
+                  );
+                },
               ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _busy ? null : () => _send(),
-              style: FilledButton.styleFrom(
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(12),
-              ),
-              child: const Icon(Icons.send_rounded, size: 18),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    enabled: !_busy,
+                    minLines: 1,
+                    maxLines: 3,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
+                    // 样式交给全局 InputDecorationTheme（填充式 surfaceAlt + 聚焦描边），
+                    // 这里只保留尺寸微调，不再自设 border
+                    decoration: const InputDecoration(
+                      hintText: '问问你的财务情况…',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _busy ? null : () => _send(),
+                  style: FilledButton.styleFrom(
+                    shape: const CircleBorder(),
+                    padding: const EdgeInsets.all(12),
+                  ),
+                  child: const Icon(Icons.send_rounded, size: 18),
+                ),
+              ],
             ),
           ],
         ),

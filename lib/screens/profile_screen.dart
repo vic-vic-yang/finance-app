@@ -15,7 +15,6 @@ import 'accounts_screen.dart';
 import 'loans_screen.dart';
 import 'ai_imports_screen.dart';
 import 'chat_screen.dart';
-import 'monthly_report_screen.dart';
 import 'goals_screen.dart';
 import 'recurring_screen.dart';
 import 'ledgers_screen.dart';
@@ -24,10 +23,7 @@ import 'budgets_screen.dart';
 import 'tools/tools_screen.dart';
 import 'tools/stock_screen.dart';
 import 'ai_model_config_screen.dart';
-import 'forecast_screen.dart';
-import 'notifications_screen.dart';
-import 'reconcile_screen.dart';
-import 'auto_bookkeeping_screen.dart';
+import 'smart_hub_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -424,17 +420,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       ('🏷️', '分类', () => _push(const CategoryManageScreen())),
       ('📅', '预算', () => _push(BudgetsScreen())),
       ('🎯', '目标', () => _push(const GoalsScreen())),
-      // 行2：AI / 自动化
+      // 行2：AI / 智能
+      ('📋', '周期', () => _push(const RecurringScreen())),
       ('📥', 'AI 导入', () => _push(const AiImportsScreen())),
-      ('📋', 'AI 订阅', () => _push(const RecurringScreen())),
-      ('📊', 'AI 月报', () => _push(const MonthlyReportScreen())),
       ('🤖', 'AI 助手', _openChat),
-      // 行3：智能管家
-      ('📈', '现金流', () => _push(const ForecastScreen())),
-      ('🔔', '通知', () => _push(const NotificationsScreen())),
-      ('🧾', '对账', () => _push(const ReconcileScreen())),
-      ('⚡', '自动记账', () => _push(const AutoBookkeepingScreen())),
-      // 行4：其他
+      ('✨', '智能管家', () => _push(const SmartHubScreen())),
+      // 行3：其他
       ('💼', '持仓', () => _push(const StockScreen())),
       ('🤝', '借贷', () => _push(const LoansScreen())),
       ('🧰', '工具箱', () => _push(const ToolsScreen())),

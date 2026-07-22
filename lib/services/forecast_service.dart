@@ -111,34 +111,70 @@ class MonthEndNetWorth {
   /// 月末预测值
   final double projected;
 
-  /// 近 30 日日均净流入
+  /// 预测方法：monthly=月度收支模式（主算法），daily=近 30 日日均（兜底）
+  final String method;
+
+  /// 参与月均的完整月数（0 → 走 daily 兜底）
+  final int monthsSampled;
+
+  /// 近 30 日日均净流入（daily 兜底用）
   final double avgDailyNetInflow;
 
   /// 本月剩余天数（不含今天）
   final int remainingDays;
   final int daysInMonth;
 
-  /// 本月剩余周期账单净额（支出减 / 收入加）
+  /// 本月剩余周期账单净额（支出减 / 收入加；daily 兜底用）
   final double remainingRecurringNet;
+
+  /// 本月至今收入 / 支出
+  final double mtdIncome;
+  final double mtdExpense;
+
+  /// 近 3 个完整月月均收入 / 支出
+  final double avgMonthlyIncome;
+  final double avgMonthlyExpense;
+
+  /// 预计剩余收入 / 支出（monthly 模式；daily 模式为 null）
+  final double? remainingIncome;
+  final double? remainingExpense;
 
   MonthEndNetWorth({
     required this.current,
     required this.projected,
+    required this.method,
+    required this.monthsSampled,
     required this.avgDailyNetInflow,
     required this.remainingDays,
     required this.daysInMonth,
     required this.remainingRecurringNet,
+    required this.mtdIncome,
+    required this.mtdExpense,
+    required this.avgMonthlyIncome,
+    required this.avgMonthlyExpense,
+    this.remainingIncome,
+    this.remainingExpense,
   });
+
+  bool get isMonthly => method == 'monthly';
 
   factory MonthEndNetWorth.fromJson(Map<String, dynamic> j) =>
       MonthEndNetWorth(
         current: (j['current'] as num).toDouble(),
         projected: (j['projected'] as num).toDouble(),
+        method: (j['method'] as String?) ?? 'daily',
+        monthsSampled: (j['monthsSampled'] as num?)?.toInt() ?? 0,
         avgDailyNetInflow: (j['avgDailyNetInflow'] as num).toDouble(),
         remainingDays: (j['remainingDays'] as num).toInt(),
         daysInMonth: (j['daysInMonth'] as num).toInt(),
         remainingRecurringNet:
             (j['remainingRecurringNet'] as num).toDouble(),
+        mtdIncome: (j['mtdIncome'] as num?)?.toDouble() ?? 0,
+        mtdExpense: (j['mtdExpense'] as num?)?.toDouble() ?? 0,
+        avgMonthlyIncome: (j['avgMonthlyIncome'] as num?)?.toDouble() ?? 0,
+        avgMonthlyExpense: (j['avgMonthlyExpense'] as num?)?.toDouble() ?? 0,
+        remainingIncome: (j['remainingIncome'] as num?)?.toDouble(),
+        remainingExpense: (j['remainingExpense'] as num?)?.toDouble(),
       );
 }
 
