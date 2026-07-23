@@ -35,6 +35,8 @@ const _scanRoots = ['lib/screens', 'lib/widgets'];
 const _exemptFiles = <String>{
   // 设计系统色值定义本身；当前不在扫描根内，列出以防将来扩大扫描范围。
   'lib/core/theme.dart',
+  // 主题色板（palette 种子色）定义，同属 token 定义处。
+  'lib/core/theme_service.dart',
 };
 
 /// 基线文件（相对包根）。

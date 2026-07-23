@@ -618,6 +618,13 @@ class ApiService {
   static Future<Map<String, dynamic>> joinLedger(String code) =>
       _post('/ledgers/join', {'code': code});
 
+  /// 加密备份批量恢复：body 含新账本名 + dekWrapped + 各实体数组
+  /// （cipher 字段已用新 DEK 重加密）。大批量行数多，给足超时。
+  static Future<Map<String, dynamic>> importBackup(
+          Map<String, dynamic> body) =>
+      _post('/ledgers/import-backup', body,
+          timeout: const Duration(seconds: 150));
+
   static Future<Map<String, dynamic>> getMembers(String ledgerId) =>
       _get('/ledgers/$ledgerId/members');
 
@@ -949,4 +956,25 @@ class ApiService {
     String base = 'CNY',
   }) =>
       _get('/tools/exchange-rates', params: {'base': base});
+
+  // ─── 通知中心 ────────────────────────────────────────────
+  /// 通知列表：分页，未读在前。返回 { items, total, page, pageSize, hasMore }
+  static Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+    int pageSize = 20,
+  }) =>
+      _get('/notifications',
+          params: {'page': '$page', 'pageSize': '$pageSize'});
+
+  /// 未读数。返回 { count }
+  static Future<Map<String, dynamic>> getNotificationUnreadCount() =>
+      _get('/notifications/unread-count');
+
+  /// 标记单条已读（幂等）
+  static Future<void> markNotificationRead(String id) =>
+      _patch('/notifications/$id/read', const {});
+
+  /// 全部标记已读。返回 { updated }
+  static Future<Map<String, dynamic>> markAllNotificationsRead() =>
+      _post('/notifications/read-all', const {});
 }

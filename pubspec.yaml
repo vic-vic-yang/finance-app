@@ -24,8 +24,18 @@ dependencies:
   file_picker: ^8.0.0+1
   http_parser: ^4.0.2
 
+  # 备份导出：把 .sikubak 密文文件分享给系统（微信/邮箱/网盘…）
+  share_plus: ^11.0.0
+
+  # 语音记账：调用系统语音识别器（Android 原生，中文 zh_CN）
+  speech_to_text: ^7.4.0
+
   # 财经资讯：点新闻打开原文链接（外部浏览器）
   url_launcher: ^6.2.5
+
+  # 本地推送桥接：启动 / 回到前台时对新未读通知发系统本地通知
+  # （仅 App 存活期间有效，非离线推送；Web 端跳过）
+  flutter_local_notifications: ^17.2.4
 
   # ── 国密加密（数据加密 + 端到端共享） ───────────────────
   # SM2/SM3/SM4 国密算法（Flutter 实现，Dart 3+）

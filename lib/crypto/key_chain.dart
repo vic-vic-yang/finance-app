@@ -116,6 +116,18 @@ class KeyChain {
 
   bool hasDek(String ledgerId) => _deks.containsKey(ledgerId);
 
+  /// 用所有已缓存的 DEK 依次尝试解密（恢复备份时用：事先不知道
+  /// 文件属于哪个账本，SM3-HMAC 校验天然能筛出正确的那把）。
+  /// 返回匹配的 (ledgerId, 明文)；全部失败返回 null。
+  ({String ledgerId, Uint8List plain})? tryDecryptWithAnyDek(Uint8List blob) {
+    for (final e in _deks.entries) {
+      try {
+        return (ledgerId: e.key, plain: SmCrypto.sm4Decrypt(blob, e.value));
+      } catch (_) {/* 不是这把钥匙，试下一把 */}
+    }
+    return null;
+  }
+
   /// 防丢失补救：如果 hasDek=false，调一次 fetcher 拉所有 wrapped DEK
   /// 然后本地解开装入缓存。
   ///

@@ -13,10 +13,13 @@ import '../models/bill.dart';
 import '../models/proposal.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/feature_discovery_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../services/funding_matcher.dart';
 import '../services/payment_method_map.dart';
+import '../widgets/feature_discovery_card.dart';
 import 'cfo_screen.dart';
+import 'reconcile_screen.dart';
 
 /// AI 智能导入：上传文件让 AI 解析为账单
 class AiImportsScreen extends StatefulWidget {
@@ -144,6 +147,8 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         noNew = true;
         bumpRefresh();
         _refresh();
+        // 全部重复恰好是推荐对账/重复检测的最佳时机（一生一次）
+        unawaited(_discoverReconcile());
         return;
       }
 
@@ -289,6 +294,7 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         noNew = true;
         bumpRefresh();
         _refresh();
+        unawaited(_discoverReconcile());
         return;
       }
       await ApiService.aiApplyImport(item.id, bills, transfers: transfers);
@@ -296,6 +302,8 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
       bumpRefresh();
       // 刷新列表卡片
       _refresh();
+      // 首次 AI 导入成功 → 推荐对账中心（一生一次，内部已裁决）
+      unawaited(_discoverReconcile());
       // 新账单已落库 → 当场拉 CFO，有高优建议就弹提示（内部已 try/catch，不拖累主流程）
       await _watchAfterApply();
     } catch (e) {
@@ -313,6 +321,25 @@ class _AiImportsScreenState extends State<AiImportsScreen> {
         if (noNew) _noNewData.add(item.id);
       }
     }
+  }
+
+  /// 一批账单 apply 成功后调用：首次导入成功 → 推荐对账中心
+  /// （重复流水 / 余额 / 缺腿体检）。一生一次，失败静默。
+  Future<void> _discoverReconcile() async {
+    if (!mounted) return;
+    await FeatureDiscoveryService.instance.maybeShow(
+      context,
+      FeatureDiscoveryService.kAiImportReconcile,
+      const FeatureDiscoveryCardData(
+        emoji: '🧾',
+        title: '导入完成，顺手对个账',
+        message: '对账中心能查余额偏差、重复流水和缺腿转账',
+      ),
+      onGo: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ReconcileScreen()),
+      ),
+    );
   }
 
   String _friendlyApplyErr(Object e) {

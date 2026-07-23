@@ -46,9 +46,12 @@ class BillCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: isIncome
-                        ? AppColors.incomeLight
-                        : AppColors.expenseLight,
+                    // 转账 / 股票纸面盈亏用中性底，不冒充真实收支
+                    color: (bill.isTransfer || bill.source == 'stock')
+                        ? AppColors.transferLight
+                        : (isIncome
+                            ? AppColors.incomeLight
+                            : AppColors.expenseLight),
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Center(
@@ -95,8 +98,14 @@ class BillCard extends StatelessWidget {
                     AmountText(
                       isIncome ? bill.amount : -bill.amount,
                       size: AmountSize.list,
-                      tone:
-                          isIncome ? AmountTone.income : AmountTone.expense,
+                      // 股票纸面盈亏 / 转账用中性 tone，与真实收支的红绿拉开
+                      tone: bill.source == 'stock'
+                          ? AmountTone.stockPaper
+                          : bill.isTransfer
+                              ? AmountTone.transfer
+                              : (isIncome
+                                  ? AmountTone.income
+                                  : AmountTone.expense),
                       showSign: true,
                     ),
                     const SizedBox(height: 2),

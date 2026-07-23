@@ -11,13 +11,18 @@ import '../models/account.dart';
 import '../models/ledger.dart';
 import '../models/insight.dart';
 import '../models/proposal.dart';
+import '../models/reconcile_report.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/discovery_triggers.dart';
+import '../services/feature_discovery_service.dart';
 import '../services/forecast_service.dart';
+import '../services/merchant_analytics.dart';
 import '../services/notification_service.dart';
 import '../services/pending_dek_resolver.dart';
 import '../widgets/chart_kit.dart';
 import '../widgets/entrance.dart';
+import '../widgets/feature_discovery_card.dart';
 import '../widgets/siku_ui.dart';
 import 'account_detail_screen.dart';
 import 'chat_screen.dart';
@@ -230,6 +235,85 @@ class _HomeScreenState extends State<HomeScreen>
     // 铃铛未读数 / 现金流预测：静默拉取，失败不影响首页其他数据
     _loadUnreadCount();
     _loadForecast();
+    // 时机式功能发现：数据就绪后静默评估（内部已 try/catch，不阻塞首屏）
+    unawaited(_evaluateDiscovery());
+  }
+
+  /// 时机式功能发现（每个场景一生只提示一次，静默失败）：
+  ///   ① 连续记账 ≥7 天        → 推荐现金流预测
+  ///   ② 近 30 天同一商户 ≥3 笔 → 推荐周期账单识别
+  /// 两个场景都展示过后直接短路，不再多拉账单；一次最多出一张卡。
+  Future<void> _evaluateDiscovery() async {
+    final fd = FeatureDiscoveryService.instance;
+    final streakShown =
+        await fd.isShown(FeatureDiscoveryService.kStreakForecast);
+    final merchantShown =
+        await fd.isShown(FeatureDiscoveryService.kMerchantRecurring);
+    if (streakShown && merchantShown) return;
+    try {
+      final now = DateTime.now();
+      final start = now.subtract(const Duration(days: 30));
+      final startStr =
+          '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+      // 现有 /bills 接口拉近 30 天账单（上限 200 条），streak 与同商户
+      // 两个判断共用这一次请求，不为发现功能新增后端接口
+      final res = await ApiService.getBills(limit: 200, startDate: startStr);
+      final bills = (res['bills'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(Bill.fromJson)
+          .toList();
+      if (!mounted) return;
+
+      // ① 连续记账 7 天 → 现金流预测
+      if (!streakShown &&
+          bookkeepingStreak(bills.map((b) => b.date), now) >= 7) {
+        final shown = await fd.maybeShow(
+          context,
+          FeatureDiscoveryService.kStreakForecast,
+          const FeatureDiscoveryCardData(
+            emoji: '📈',
+            title: '已连续记账 7 天，试试现金流预测',
+            message: '按当前节奏推算月末结余，超支早知道',
+          ),
+          onGo: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ForecastScreen()),
+          ),
+        );
+        if (shown) return; // 一次只出一张卡，另一个场景下次再评
+      }
+
+      // ② 近 30 天同一商户 ≥3 笔 → 周期账单识别（备注明文本机解密，不出设备）
+      if (!merchantShown) {
+        final ledgerId = _currentLedger?.id ?? '';
+        final entries = <({String merchant, DateTime date})>[
+          for (final b in bills)
+            if (b.type == 'expense' && !b.isTransfer && b.source != 'stock')
+              (
+                merchant: extractMerchant(
+                  ReconcileItem.noteOf(ledgerId, b.noteCipher, b.noteDekVer),
+                ),
+                date: b.date,
+              ),
+        ];
+        final hit = frequentMerchant(entries, now: now);
+        if (hit != null && mounted) {
+          await fd.maybeShow(
+            context,
+            FeatureDiscoveryService.kMerchantRecurring,
+            FeatureDiscoveryCardData(
+              emoji: '🔁',
+              title: '「${hit.merchant}」近 30 天出现了 ${hit.count} 次',
+              message: '周期账单能盯住这类固定支出，到期前提醒你',
+            ),
+            onGo: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RecurringScreen()),
+            ),
+          );
+        }
+      }
+    } catch (_) {/* 静默：发现失败不影响首页 */}
   }
 
   /// 通知未读数（角标数据源）。失败时保持原值，不清角标。

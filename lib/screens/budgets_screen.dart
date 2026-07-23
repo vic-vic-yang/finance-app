@@ -5,10 +5,13 @@ import '../core/theme.dart';
 import '../models/budget.dart';
 import '../models/category.dart';
 import '../services/api_service.dart';
+import '../services/feature_discovery_service.dart';
 import '../models/bill.dart';
 import '../widgets/chart_kit.dart';
+import '../widgets/feature_discovery_card.dart';
 import '../widgets/siku_ui.dart';
 import 'add_bill_screen.dart' show CategoryPickerSheet;
+import 'notifications_screen.dart';
 
 /// 预算页面 —— 重新设计：
 /// - 只按 *分类* 设预算，"总预算" = 所有分类预算之和（自动算）
@@ -184,7 +187,29 @@ class _BudgetsScreenState extends State<BudgetsScreen>
         budget: budget,
         defaultPeriod: _period,
         existingBudgets: _budgets,
-        onSaved: bumpRefresh,
+        onSaved: (created) {
+          bumpRefresh();
+          // 首次创建预算成功 → 推荐预算预警入口（一生一次）
+          if (created) _discoverBudgetAlert();
+        },
+      ),
+    );
+  }
+
+  /// 首次创建预算成功 → 告知预算预警会出现在通知中心 / CFO（一生一次）
+  Future<void> _discoverBudgetAlert() async {
+    if (!mounted) return;
+    await FeatureDiscoveryService.instance.maybeShow(
+      context,
+      FeatureDiscoveryService.kFirstBudgetAlert,
+      const FeatureDiscoveryCardData(
+        emoji: '🔔',
+        title: '预算预警已就位',
+        message: '快超支时，通知中心和 CFO 复盘会主动提醒你',
+      ),
+      onGo: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
       ),
     );
   }
@@ -566,6 +591,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
     );
     if (result == null) return;
     try {
+      var created = false;
       if (result.clear) {
         if (cur != null) await ApiService.deleteBudget(cur.id);
       } else if (cur == null) {
@@ -575,6 +601,7 @@ class _BudgetsScreenState extends State<BudgetsScreen>
           categoryId: null,
           startDate: DateTime.now().toIso8601String().substring(0, 10),
         );
+        created = true;
       } else {
         await ApiService.updateBudget(
           cur.id,
@@ -583,6 +610,8 @@ class _BudgetsScreenState extends State<BudgetsScreen>
         );
       }
       bumpRefresh();
+      // 首次创建预算成功 → 推荐预算预警入口（一生一次）
+      if (created) _discoverBudgetAlert();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -1214,7 +1243,8 @@ class _BudgetSheet extends StatefulWidget {
   final Budget? budget;
   final String defaultPeriod;
   final List<Budget> existingBudgets;
-  final VoidCallback onSaved;
+  /// 保存成功回调；参数为是否为「新建」（区别于编辑）
+  final void Function(bool created) onSaved;
 
   @override
   State<_BudgetSheet> createState() => _BudgetSheetState();
@@ -1313,7 +1343,7 @@ class _BudgetSheetState extends State<_BudgetSheet> {
       }
       if (!mounted) return;
       Navigator.pop(context);
-      widget.onSaved();
+      widget.onSaved(widget.budget == null);
     } catch (_) {
       _toast('保存失败');
     } finally {

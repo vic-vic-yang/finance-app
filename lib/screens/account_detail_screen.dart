@@ -1629,9 +1629,12 @@ class _BillRow extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: bill.isIncome
-                      ? AppColors.incomeLight
-                      : AppColors.expenseLight,
+                  // 转账 / 股票纸面盈亏用中性底，不冒充真实收支
+                  color: (bill.isTransfer || bill.source == 'stock')
+                      ? AppColors.transferLight
+                      : (bill.isIncome
+                          ? AppColors.incomeLight
+                          : AppColors.expenseLight),
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Center(
@@ -1690,9 +1693,14 @@ class _BillRow extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: bill.isIncome
-                            ? AppColors.income
-                            : AppColors.expense)),
+                        // 股票纸面盈亏 / 转账用中性色，与真实收支的红绿拉开
+                        color: bill.source == 'stock'
+                            ? AppColors.stockPaper
+                            : bill.isTransfer
+                                ? AppColors.transfer
+                                : (bill.isIncome
+                                    ? AppColors.income
+                                    : AppColors.expense))),
                 const SizedBox(height: 2),
                 Text(DateFormat('HH:mm').format(bill.date),
                     style: TextStyle(

@@ -17,7 +17,19 @@ import '../widgets/siku_ui.dart';
 ///   3. 支出速率与超支预警（本月至今 vs 上月同期 vs 当月总预算）
 ///   4. 目标达成预测（按近 90 天月均净存入外推）
 class ForecastScreen extends StatefulWidget {
-  const ForecastScreen({super.key});
+  const ForecastScreen({
+    super.key,
+    this.forecastFetcher,
+    this.categoriesFetcher,
+    this.accountsFetcher,
+    this.userFetcher,
+  });
+
+  /// 依赖注入点（测试用；缺省走真实 service / ApiService）
+  final Future<CashflowForecast> Function()? forecastFetcher;
+  final Future<Map<String, dynamic>> Function()? categoriesFetcher;
+  final Future<Map<String, dynamic>> Function()? accountsFetcher;
+  final Future<Map<String, dynamic>?> Function()? userFetcher;
 
   @override
   State<ForecastScreen> createState() => _ForecastScreenState();
@@ -39,11 +51,16 @@ class _ForecastScreenState extends State<ForecastScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      final forecastFn = widget.forecastFetcher ?? ForecastService.getForecast;
+      final catsFn = widget.categoriesFetcher ?? ApiService.getCategories;
+      final accsFn =
+          widget.accountsFetcher ?? () => ApiService.getAccounts();
+      final userFn = widget.userFetcher ?? AuthService.getUser;
       final futures = await Future.wait([
-        ForecastService.getForecast(),
-        ApiService.getCategories(),
-        ApiService.getAccounts(),
-        AuthService.getUser(),
+        forecastFn(),
+        catsFn(),
+        accsFn(),
+        userFn(),
       ]);
       final catsRes = futures[1] as Map<String, dynamic>;
       final accsRes = futures[2] as Map<String, dynamic>;

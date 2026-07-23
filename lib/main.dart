@@ -15,8 +15,13 @@ import 'screens/welcome_screen.dart';
 import 'services/api_service.dart';
 import 'services/llm_config_service.dart';
 import 'services/auth_service.dart';
+import 'services/local_push_service.dart';
 import 'services/pending_dek_resolver.dart';
 import 'services/auto_bookkeeping_service.dart';
+import 'screens/notifications_screen.dart';
+
+/// 全局 Navigator key：本地推送点击回调等无 BuildContext 场景用来路由跳转
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,11 +63,51 @@ void main() async {
   await LlmConfigService.instance.load(savedUser?['id'] as String?);
   // 启动自动记账通知监听（仅 Android 生效；幂等，未登录/未授权时静默）
   AutoBookkeepingService.instance.start();
+  // 本地推送桥接：初始化 + 启动时检查一次新未读通知（App 内 async，不阻塞首屏）。
+  // ⚠️ 边界：这不是离线推送——只在 App 启动 / 回到前台时生效，
+  // App 被杀后收不到提醒（那需要 FCM / 厂商通道，本期不做）。
+  unawaited(LocalPushService.instance
+      .init(onOpenNotificationCenter: _openNotificationCenterFromPush)
+      .then((_) => LocalPushService.instance.checkAndNotify()));
   runApp(const FinanceApp());
 }
 
-class FinanceApp extends StatelessWidget {
+/// 点击系统本地通知 → 打开通知中心（未登录 / App 尚未就绪时静默跳过）
+Future<void> _openNotificationCenterFromPush() async {
+  final nav = appNavigatorKey.currentState;
+  if (nav == null) return;
+  final token = await AuthService.getToken();
+  if (token == null) return;
+  nav.push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+}
+
+class FinanceApp extends StatefulWidget {
   const FinanceApp({super.key});
+
+  @override
+  State<FinanceApp> createState() => _FinanceAppState();
+}
+
+class _FinanceAppState extends State<FinanceApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从后台回到前台：检查一次新未读通知并补发本地推送（内部已做去重与静默降级）
+    if (state == AppLifecycleState.resumed) {
+      unawaited(LocalPushService.instance.checkAndNotify());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +116,7 @@ class FinanceApp extends StatelessWidget {
       builder: (_, __) => MaterialApp(
         title: '司库',
         debugShowCheckedModeBanner: false,
+        navigatorKey: appNavigatorKey,
         theme: AppTheme.build(),
         // 中文本地化：让 DatePicker / TimePicker / 系统对话框都说中文
         localizationsDelegates: const [

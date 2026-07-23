@@ -28,6 +28,8 @@ import '../core/theme.dart';
 ///   - neutral → AppColors.text1（余额、总资产等无方向数值）
 ///   - income  → AppColors.income（红，收入）
 ///   - expense → AppColors.expense（绿，支出）
+///   - transfer → AppColors.transfer（中性灰绿，转账位移）
+///   - stockPaper → AppColors.stockPaper（中性石板灰，股票纸面盈亏）
 ///   - auto    → 按数值正负自动：正 = income，负 = expense
 /// `color` 参数可整体覆盖（渐变 hero 卡上用 AppColors.onPrimaryGradient）；
 /// 覆盖时货币符号跟随主色 70% 透明度，否则固定用 AppColors.text2。
@@ -107,6 +109,8 @@ class AmountText extends StatelessWidget {
           AmountTone.neutral => AppColors.text1,
           AmountTone.income => AppColors.income,
           AmountTone.expense => AppColors.expense,
+          AmountTone.transfer => AppColors.transfer,
+          AmountTone.stockPaper => AppColors.stockPaper,
           AmountTone.auto =>
             amount >= 0 ? AppColors.income : AppColors.expense,
         };
@@ -154,7 +158,7 @@ class AmountText extends StatelessWidget {
 enum AmountSize { hero, card, list, aux }
 
 /// 金额语义色。
-enum AmountTone { neutral, income, expense, auto }
+enum AmountTone { neutral, income, expense, transfer, stockPaper, auto }
 
 ({double fontSize, FontWeight weight, double letterSpacing}) _sizeSpec(
         AmountSize s) =>

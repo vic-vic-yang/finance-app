@@ -24,6 +24,8 @@ import 'tools/tools_screen.dart';
 import 'tools/stock_screen.dart';
 import 'ai_model_config_screen.dart';
 import 'smart_hub_screen.dart';
+import 'notifications_screen.dart';
+import 'backup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -426,9 +428,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       ('🤖', 'AI 助手', _openChat),
       ('✨', '智能管家', () => _push(const SmartHubScreen())),
       // 行3：其他
+      ('🔔', '通知', () => _push(const NotificationsScreen())),
       ('💼', '持仓', () => _push(const StockScreen())),
       ('🤝', '借贷', () => _push(const LoansScreen())),
       ('🧰', '工具箱', () => _push(const ToolsScreen())),
+      // 行4：数据安全
+      ('🗄️', '备份', () => _push(const BackupScreen())),
     ];
     return GlassCard(
       radius: 16,

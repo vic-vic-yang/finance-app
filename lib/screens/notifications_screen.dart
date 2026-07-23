@@ -4,17 +4,43 @@ import '../models/app_notification.dart';
 import '../services/notification_service.dart';
 import '../widgets/siku_ui.dart';
 
+/// 通知列表数据源（可注入，便于测试）：分页，未读在前。
+typedef NotificationListFetcher = Future<Map<String, dynamic>> Function({
+  int page,
+  int pageSize,
+});
+
+/// 单条已读操作（可注入，便于测试）。
+typedef NotificationReadMarker = Future<void> Function(String id);
+
 /// 通知中心：服务端主动推送（CFO 预警等）的用户级通知列表。
 /// - 未读在前，点击单条标记已读，右上角「全部已读」
 /// - 下拉刷新 + 滚动到底部分页加载
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({
+    super.key,
+    this.listFetcher,
+    this.readMarker,
+    this.allReadMarker,
+  });
+
+  /// 数据源，默认走 [NotificationService]；测试时注入假实现。
+  final NotificationListFetcher? listFetcher;
+  final NotificationReadMarker? readMarker;
+
+  /// 「全部已读」操作，默认 [NotificationService.markAllRead]。
+  final Future<void> Function()? allReadMarker;
+
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   static const _pageSize = 20;
+
+  NotificationListFetcher get _fetch => widget.listFetcher ?? NotificationService.list;
+  NotificationReadMarker get _markReadApi => widget.readMarker ?? NotificationService.markRead;
+  Future<void> Function() get _markAllReadApi => widget.allReadMarker ?? NotificationService.markAllRead;
 
   final _scroll = ScrollController();
   List<AppNotification> _items = [];
@@ -47,7 +73,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final res = await NotificationService.list(page: 1, pageSize: _pageSize);
+      final res = await _fetch(page: 1, pageSize: _pageSize);
       if (!mounted) return;
       setState(() {
         _items = _parse(res);
@@ -66,7 +92,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     setState(() => _loadingMore = true);
     try {
       final res =
-          await NotificationService.list(page: _page + 1, pageSize: _pageSize);
+          await _fetch(page: _page + 1, pageSize: _pageSize);
       if (!mounted) return;
       setState(() {
         _items = [..._items, ..._parse(res)];
@@ -99,7 +125,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ];
     });
     try {
-      await NotificationService.markRead(n.id);
+      await _markReadApi(n.id);
     } catch (_) {
       /* 静默：下次进来还是未读，不打扰 */
     }
@@ -111,7 +137,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _items = [for (final x in _items) _copyRead(x)];
     });
     try {
-      await NotificationService.markAllRead();
+      await _markAllReadApi();
     } catch (e) {
       _toast('操作失败：$e');
       _load(); // 失败回滚到服务端真实状态
@@ -287,6 +313,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             Padding(
               padding: const EdgeInsets.only(left: 8, top: 4),
               child: Container(
+                key: Key('unread-dot-${n.id}'),
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(

@@ -20,7 +20,10 @@ import 'theme_service.dart';
 ///   - 大面积都是 bg / surface / text，颜色克制
 ///   - primary 只用在重要操作（FAB、按钮、选中态边框/文字）
 ///   - primaryLight 仅作"轻提示"用，能不用尽量不用
-///   - income / expense / warning 是语义色，跟主题无关
+///   - 支出 / 收入 / 转账 / 股票纸面盈亏是语义色（AppColors.expense /
+///     income / transfer / stockPaper），跟主题无关，全局金额颜色统一引用
+///   - 装饰色（玻璃拟态实现色、目标卡渐变）也集中在 AppColors / 组件内部，
+///     页面代码不写 Color(0x…) 字面量（tool/design_lint.dart 强制）
 ///
 /// 尺度约定（新代码请遵守，避免各写各的）：
 ///   - 圆角层级：hero 大卡 18 · 标准卡 16 · 列表条/子卡 14 · chip/输入 10-12
@@ -73,7 +76,7 @@ class AppColors {
   /// primary 上的前景色（自动算对比度）
   static Color get onPrimary {
     final p = primary;
-    return p.computeLuminance() > 0.55 ? const Color(0xFF143724) : Colors.white;
+    return p.computeLuminance() > 0.55 ? onAccentDark : Colors.white;
   }
 
   /// 淡化主色 → 用作"轻强调"的背景（chip 选中、列表 hover、AI 提示卡）
@@ -136,6 +139,32 @@ class AppColors {
   static Color get warningLight => _isDark
       ? const Color(0xFF2B2118)
       : const Color(0xFFF7ECD9);
+  /// 转账 —— 中性灰绿（资金位移，非收非支）。
+  /// 与 text3（outline 灰绿）同色相，加深半档保证金额可读；亮暗双模。
+  static Color get transfer => _isDark
+      ? const Color(0xFFAFB6B1)
+      : const Color(0xFF5F6762);
+  static Color get transferLight => _isDark
+      ? const Color(0xFF232723)
+      : const Color(0xFFEBEDEB);
+  /// 股票纸面盈亏 —— 中性石板灰（市值波动，不是真实现金流）。
+  /// 与 transfer 同族但浅半档，刻意区别于真实收支的红 / 绿，
+  /// 避免股票结算单在账单列表里"伪装"成收入 / 支出。
+  static Color get stockPaper => _isDark
+      ? const Color(0xFF9AA39D)
+      : const Color(0xFF7A837D);
+  /// 成功 / 达标 —— 深苔绿（expense 同色相、加深半档）。
+  /// 用于目标达成、结余为正等正向反馈；与 income(红) / expense(绿) 拉开明度差。
+  static Color get success => _isDark
+      ? const Color(0xFF93BD9F)
+      : const Color(0xFF5E8A6B);
+  static Color get successLight => _isDark
+      ? const Color(0xFF1E2A22)
+      : const Color(0xFFE6EFE8);
+
+  /// accent 实底 / 深色渐变上的高对比前景（深端）。
+  /// [onPrimary] 与记一笔页 `_fgOn` 共用，阈值 luminance > 0.55 → 用此色。
+  static const Color onAccentDark = Color(0xFF143724);
 
   // ── 中性色（Aura 配色表，亮 / 暗双模） ─────────────────────
   /// 页面背景
@@ -165,6 +194,32 @@ class AppColors {
       : const Color(0xFFE3E2E0); // surface-container-highest
 
   static bool get _isDark => ThemeService.instance.isDark;
+
+  // ── 装饰色板（非语义色，但也要亮 / 暗双模） ─────────────────
+  /// 目标卡装饰渐变（按 index 循环取色，代替参考设计里的实拍图）。
+  /// 暗色模式整体提亮（HSL 明度 +0.10，色相 / 饱和度不动），
+  /// 避免深色渐变沉入 obsidian 背景导致卡片"消失"。
+  static List<Color> goalGradient(int index) {
+    const base = [
+      [Color(0xFF1B3022), Color(0xFF3C6049)], // 森林绿
+      [Color(0xFF2E3A40), Color(0xFF53666E)], // 雾岩灰
+      [Color(0xFF5C4A40), Color(0xFF8C7263)], // 暖陶褐
+      [Color(0xFF34453C), Color(0xFF5E7866)], // 深苔绿
+      [Color(0xFF2A2E3A), Color(0xFF474D60)], // 暮霭蓝
+      [Color(0xFF4A3B4A), Color(0xFF6E5670)], // 紫罗兰灰
+    ];
+    final pair = base[index % base.length];
+    if (!_isDark) return pair;
+    return [for (final c in pair) _liftLightness(c, 0.10)];
+  }
+
+  /// HSL 明度平移（色相 / 饱和度不动）：同族派生，保持色板克制和谐。
+  static Color _liftLightness(Color c, double dLight) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl
+        .withLightness((hsl.lightness + dLight).clamp(0.0, 1.0))
+        .toColor();
+  }
 
   // ── Aura 专用 ───────────────────────────────────────────────
   /// Aura light primary：Forest Green

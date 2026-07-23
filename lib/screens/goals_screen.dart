@@ -93,15 +93,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
     }
   }
 
-  /// 「Quiet Luxury」渐变色板 —— 每个目标卡按序取一套，代替参考设计里的实拍图
-  static const List<List<Color>> _gradients = [
-    [Color(0xFF1B3022), Color(0xFF3C6049)], // design:ok 目标卡装饰渐变（森林绿）
-    [Color(0xFF2E3A40), Color(0xFF53666E)], // design:ok 目标卡装饰渐变（雾岩灰）
-    [Color(0xFF5C4A40), Color(0xFF8C7263)], // design:ok 目标卡装饰渐变（暖陶褐）
-    [Color(0xFF34453C), Color(0xFF5E7866)], // design:ok 目标卡装饰渐变（深苔绿）
-    [Color(0xFF2A2E3A), Color(0xFF474D60)], // design:ok 目标卡装饰渐变（暮霭蓝）
-    [Color(0xFF4A3B4A), Color(0xFF6E5670)], // design:ok 目标卡装饰渐变（紫罗兰灰）
-  ];
+  // 目标卡渐变统一走 AppColors.goalGradient（亮 / 暗双模装饰色板）。
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +188,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
     final pct = (g.progress * 100).clamp(0, 999);
     final done = g.progress >= 1;
     final p = g.progress.clamp(0.0, 1.0);
-    final grad = _gradients[index % _gradients.length];
+    final grad = AppColors.goalGradient(index);
 
     final dl = g.deadline;
     final accName = g.accountName();

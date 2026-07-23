@@ -10,6 +10,7 @@ import '../models/category.dart';
 import '../models/account.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/bills_filter_query.dart';
 import '../services/pending_dek_resolver.dart';
 import 'add_bill_screen.dart';
 import 'recurring_screen.dart';
@@ -64,28 +65,19 @@ class _BillsScreenState extends State<BillsScreen>
 
   static final _moneyFmtInt = NumberFormat('#,##0');
 
-  String? get _startDate {
-    if (_dateMode == _DateMode.all) return null;
-    if (_dateMode == _DateMode.range) {
-      if (_rangeStart == null) return null;
-      return DateFormat('yyyy-MM-dd').format(_rangeStart!);
-    }
-    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-01-01';
-    final m = _dateAnchor.month.toString().padLeft(2, '0');
-    return '${_dateAnchor.year}-$m-01';
-  }
+  String? get _startDate => billsDateRange(
+        mode: _dateMode,
+        anchor: _dateAnchor,
+        rangeStart: _rangeStart,
+        rangeEnd: _rangeEnd,
+      ).start;
 
-  String? get _endDate {
-    if (_dateMode == _DateMode.all) return null;
-    if (_dateMode == _DateMode.range) {
-      if (_rangeEnd == null) return null;
-      return DateFormat('yyyy-MM-dd').format(_rangeEnd!);
-    }
-    if (_dateMode == _DateMode.year) return '${_dateAnchor.year}-12-31';
-    final last = DateTime(_dateAnchor.year, _dateAnchor.month + 1, 0).day;
-    final m = _dateAnchor.month.toString().padLeft(2, '0');
-    return '${_dateAnchor.year}-$m-${last.toString().padLeft(2, '0')}';
-  }
+  String? get _endDate => billsDateRange(
+        mode: _dateMode,
+        anchor: _dateAnchor,
+        rangeStart: _rangeStart,
+        rangeEnd: _rangeEnd,
+      ).end;
 
   String get _dateLabel {
     switch (_dateMode) {
@@ -202,9 +194,8 @@ class _BillsScreenState extends State<BillsScreen>
         page: 1,
         limit: 20,
         type: _filterType,
-        isTransfer: _filterTransfersOnly
-            ? 'true'
-            : (_filterSource != null ? 'false' : null),
+        isTransfer: billsIsTransferFilter(
+            transfersOnly: _filterTransfersOnly, source: _filterSource),
         source: _filterSource,
         userIds: _filterUserIds.toList(),
         accountIds: _filterAccountIds.toList(),
@@ -235,9 +226,8 @@ class _BillsScreenState extends State<BillsScreen>
         page: _page,
         limit: 20,
         type: _filterType,
-        isTransfer: _filterTransfersOnly
-            ? 'true'
-            : (_filterSource != null ? 'false' : null),
+        isTransfer: billsIsTransferFilter(
+            transfersOnly: _filterTransfersOnly, source: _filterSource),
         source: _filterSource,
         userIds: _filterUserIds.toList(),
         accountIds: _filterAccountIds.toList(),
@@ -1417,7 +1407,12 @@ class _BillTile extends StatelessWidget {
               Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: bill.isIncome ? AppColors.incomeLight : AppColors.expenseLight,
+                  // 转账 / 股票纸面盈亏用中性底，不冒充真实收支
+                  color: (bill.isTransfer || bill.source == 'stock')
+                      ? AppColors.transferLight
+                      : (bill.isIncome
+                          ? AppColors.incomeLight
+                          : AppColors.expenseLight),
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Center(
@@ -1477,7 +1472,14 @@ class _BillTile extends StatelessWidget {
                 AmountText(
                   bill.isIncome ? bill.amount : -bill.amount,
                   size: AmountSize.list,
-                  tone: bill.isIncome ? AmountTone.income : AmountTone.expense,
+                  // 股票纸面盈亏 / 转账用中性 tone，与真实收支的红绿拉开
+                  tone: bill.source == 'stock'
+                      ? AmountTone.stockPaper
+                      : bill.isTransfer
+                          ? AmountTone.transfer
+                          : (bill.isIncome
+                              ? AmountTone.income
+                              : AmountTone.expense),
                   showSign: true,
                 ),
                 const SizedBox(height: 2),
@@ -1507,4 +1509,6 @@ class _BillTile extends StatelessWidget {
   }
 }
 
-enum _DateMode { all, month, year, range }
+/// 日期筛选模式：实现已抽到 services/bills_filter_query.dart（纯函数，可单测），
+/// 这里用 typedef 保持本文件既有 `_DateMode.xxx` 用法不变。
+typedef _DateMode = BillsDateMode;

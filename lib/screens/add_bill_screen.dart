@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -14,13 +15,123 @@ import '../services/funding_matcher.dart';
 import '../services/payment_method_map.dart';
 import '../services/recents_service.dart';
 import '../widgets/success_check.dart';
+import '../widgets/voice_entry_sheet.dart';
 import 'ai_imports_screen.dart';
 
+/// 「记一笔」提交前的纯校验：返回 null 表示可提交，否则返回应提示用户的文案。
+/// 抽为顶层纯函数，作为金额 / 分类 / 账户 / 转账双方校验的单一事实来源（便于单测）。
+String? validateBillDraft({
+  required double amount,
+  required String type, // 'expense' / 'income' / 'transfer'
+  String? categoryId,
+  String? accountId,
+  String? toAccountId,
+}) {
+  if (amount <= 0) return '请输入有效金额';
+  if (type == 'transfer') {
+    if (accountId == null) return '请选择转出账户';
+    if (toAccountId == null) return '请选择转入账户';
+    if (accountId == toAccountId) return '转出和转入账户不能相同';
+    return null;
+  }
+  if (categoryId == null) return '请选择分类';
+  if (accountId == null) return '请选择账户';
+  return null;
+}
+
+/// 「记一笔」的外部 API 依赖。默认实现原样转发到 [ApiService]；
+/// 测试注入 fake，避免真实网络请求（与 notifications_screen 的 listFetcher 同一思路）。
+class AddBillApi {
+  const AddBillApi();
+
+  Future<Map<String, dynamic>> getCategories() => ApiService.getCategories();
+
+  Future<Map<String, dynamic>> getAccounts({String? scope}) =>
+      ApiService.getAccounts(scope: scope);
+
+  Future<Map<String, dynamic>> getBill(String id) => ApiService.getBill(id);
+
+  Future<Map<String, dynamic>> createBill({
+    required String type,
+    required double amount,
+    required String categoryId,
+    required String accountId,
+    required String noteCipher,
+    required int noteDekVer,
+    DateTime? date,
+  }) =>
+      ApiService.createBill(
+        type: type,
+        amount: amount,
+        categoryId: categoryId,
+        accountId: accountId,
+        noteCipher: noteCipher,
+        noteDekVer: noteDekVer,
+        date: date,
+      );
+
+  Future<Map<String, dynamic>> updateBill(
+    String id, {
+    required String type,
+    required double amount,
+    required String categoryId,
+    required String accountId,
+    required String noteCipher,
+    required int noteDekVer,
+    DateTime? date,
+    String? toAccountId,
+  }) =>
+      ApiService.updateBill(
+        id,
+        type: type,
+        amount: amount,
+        categoryId: categoryId,
+        accountId: accountId,
+        noteCipher: noteCipher,
+        noteDekVer: noteDekVer,
+        date: date,
+        toAccountId: toAccountId,
+      );
+
+  Future<Map<String, dynamic>> transfer({
+    required String fromAccountId,
+    required String toAccountId,
+    required double amount,
+    String? note,
+    String? fromNoteCipher,
+    String? toNoteCipher,
+    int? noteDekVer,
+  }) =>
+      ApiService.transfer(
+        fromAccountId: fromAccountId,
+        toAccountId: toAccountId,
+        amount: amount,
+        note: note,
+        fromNoteCipher: fromNoteCipher,
+        toNoteCipher: toNoteCipher,
+        noteDekVer: noteDekVer,
+      );
+
+  Future<Map<String, dynamic>> convertBill(
+    String id, {
+    required String to,
+    String? toAccountId,
+  }) =>
+      ApiService.convertBill(id, to: to, toAccountId: toAccountId);
+}
+
 class AddBillScreen extends StatefulWidget {
-  const AddBillScreen({super.key, this.bill, this.initialAccountId});
+  const AddBillScreen({
+    super.key,
+    this.bill,
+    this.initialAccountId,
+    this.api = const AddBillApi(),
+  });
   final Bill? bill;
   /// 新建账单时预选的账户 id（如从账户详情页"记一笔"进入）
   final String? initialAccountId;
+  /// 外部 API 依赖（测试注入 fake；生产用默认实现）
+  final AddBillApi api;
 
   @override
   State<AddBillScreen> createState() => _AddBillScreenState();
@@ -29,6 +140,8 @@ class AddBillScreen extends StatefulWidget {
 class _AddBillScreenState extends State<AddBillScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
+
+  AddBillApi get _api => widget.api;
 
   /// 'expense' / 'income' / 'transfer'
   String _type = 'expense';
@@ -206,10 +319,10 @@ class _AddBillScreenState extends State<AddBillScreen>
   Future<void> _loadData() async {
     try {
       final results = await Future.wait([
-        ApiService.getCategories(),
-        ApiService.getAccounts(),
+        _api.getCategories(),
+        _api.getAccounts(),
         // 拉一次"全部账户"用于转账目的地（含他人私人账户，余额已隐藏）
-        ApiService.getAccounts(scope: 'all'),
+        _api.getAccounts(scope: 'all'),
       ]);
       // 智能默认（本地缓存）：最近分类 + 上次账户
       final recentExpense = await RecentsService.get('expense');
@@ -289,7 +402,7 @@ class _AddBillScreenState extends State<AddBillScreen>
   /// 编辑转账：把「转出」预填为支出腿账户、「转入」为收入腿账户
   Future<void> _prefillTransferPair(Bill b, List<Account> accounts) async {
     try {
-      final res = await ApiService.getBill(b.id);
+      final res = await _api.getBill(b.id);
       final pairAccId = res['bill']?['transferPairAccountId'] as String?;
       if (!mounted || pairAccId == null) return;
       Account? pair;
@@ -407,25 +520,21 @@ class _AddBillScreenState extends State<AddBillScreen>
 
   Future<void> _save() async {
     final amount = _total;
-    if (amount <= 0) {
-      _toast('请输入有效金额');
+    // 纯校验（validateBillDraft）：金额 > 0、收支需分类+账户、转账需两个不同账户
+    final error = validateBillDraft(
+      amount: amount,
+      type: _type,
+      categoryId: _selectedCategory?.id,
+      accountId: _selectedAccount?.id,
+      toAccountId: _toAccount?.id,
+    );
+    if (error != null) {
+      _toast(error);
       return;
     }
 
     // ── 转账分支 ────────────────────────────────────────────────
     if (_isTransfer) {
-      if (_selectedAccount == null) {
-        _toast('请选择转出账户');
-        return;
-      }
-      if (_toAccount == null) {
-        _toast('请选择转入账户');
-        return;
-      }
-      if (_selectedAccount!.id == _toAccount!.id) {
-        _toast('转出和转入账户不能相同');
-        return;
-      }
       setState(() => _saving = true);
       try {
         // 生成两条转账轨迹流水的备注密文（客户端用账本 DEK 加密）；
@@ -451,7 +560,7 @@ class _AddBillScreenState extends State<AddBillScreen>
               ? KeyChain.instance
                   .encryptText(ledgerId: b.ledgerId, plain: userNote)
               : (fromCipher ?? '');
-          await ApiService.updateBill(
+          await _api.updateBill(
             b.id,
             type: b.type,
             amount: amount,
@@ -472,7 +581,7 @@ class _AddBillScreenState extends State<AddBillScreen>
         // ── 编辑普通账单 → 切到转账页保存 = 转为账户间转账（原地重分类，不重复扣钱）──
         if (widget.bill != null) {
           final b = widget.bill!;
-          await ApiService.convertBill(b.id,
+          await _api.convertBill(b.id,
               to: 'transfer', toAccountId: _toAccount!.id);
           await _learnTransferMapping(b, _toAccount!);
           if (!mounted) return;
@@ -481,7 +590,7 @@ class _AddBillScreenState extends State<AddBillScreen>
           return;
         }
 
-        await ApiService.transfer(
+        await _api.transfer(
           fromAccountId: _selectedAccount!.id,
           toAccountId: _toAccount!.id,
           amount: amount,
@@ -502,15 +611,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     }
 
     // ── 收/支分支 ───────────────────────────────────────────────
-    if (_selectedCategory == null) {
-      _toast('请选择分类');
-      return;
-    }
-    if (_selectedAccount == null) {
-      _toast('请选择账户');
-      return;
-    }
-
+    // （分类 / 账户必填已在 validateBillDraft 校验）
     setState(() => _saving = true);
     try {
       // 用所选账户所在账本的 DEK 加密 note（空备注也加密，避免泄露"是否填了"信号）
@@ -522,7 +623,7 @@ class _AddBillScreenState extends State<AddBillScreen>
       );
 
       if (widget.bill != null) {
-        await ApiService.updateBill(
+        await _api.updateBill(
           widget.bill!.id,
           type: _type,
           amount: amount,
@@ -533,7 +634,7 @@ class _AddBillScreenState extends State<AddBillScreen>
           date: _date,
         );
       } else {
-        await ApiService.createBill(
+        await _api.createBill(
           type: _type,
           amount: amount,
           categoryId: _selectedCategory!.id,
@@ -575,7 +676,17 @@ class _AddBillScreenState extends State<AddBillScreen>
     Navigator.pop(context, true);
   }
 
-  // 语音 / OCR 入口已下架：AI 智能记账走 /ai/imports 流水线（上传文件 → 后端 LLM 解析）
+  // OCR 入口已下架：AI 智能记账走 /ai/imports 流水线（上传文件 → 后端 LLM 解析）；
+  // 语音记账走语音弹层（识别文字 → 司库助手同款解析 → 草稿卡确认入库）。
+
+  /// 语音记账入口：Web 端语音识别能力受限，优雅降级为提示
+  void _openVoiceEntry() {
+    if (kIsWeb) {
+      _toast('语音记账目前仅支持手机 App，请在手机上使用');
+      return;
+    }
+    showVoiceEntrySheet(context);
+  }
 
   String _formatDate(DateTime d) {
     final now = DateTime.now();
@@ -622,7 +733,7 @@ class _AddBillScreenState extends State<AddBillScreen>
   /// accent 实底 / 渐变底上的高对比前景：按底色亮度自动选深 / 浅，
   /// 阈值与 AppColors.onPrimary 一致（luminance > 0.55 → 深色）
   Color _fgOn(Color bg) => bg.computeLuminance() > 0.55
-      ? const Color(0xFF143724) // design:ok 同 AppColors.onPrimary 深色端
+      ? AppColors.onAccentDark
       : Colors.white; // design:ok 同 AppColors.onPrimary 浅色端
 
   /// header 渐变上的前景色：渐变自 accent 本色起向下压暗 18%，顶部最亮，
@@ -769,10 +880,24 @@ class _AddBillScreenState extends State<AddBillScreen>
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
               child: Row(children: [
-                IconButton(
-                  icon: Icon(Icons.close_rounded, color: fg70, size: 22),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                // 新建模式右侧是「语音 + AI 导入」两个按钮（96 宽），
+                // 左侧补等宽占位保持标题视觉居中
+                if (widget.bill == null)
+                  SizedBox(
+                    width: 96,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        icon: Icon(Icons.close_rounded, color: fg70, size: 22),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: fg70, size: 22),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 Expanded(
                   child: Text(
                     widget.bill != null ? '编辑账单' : '记一笔',
@@ -787,18 +912,25 @@ class _AddBillScreenState extends State<AddBillScreen>
                 // （转为账户间转账直接切"转账" tab 保存即可；转账账单无菜单）。
                 // 无右侧按钮时补一个等宽占位，保持标题视觉居中
                 if (widget.bill == null)
-                  IconButton(
-                    icon: Icon(Icons.file_upload_rounded,
-                        color: fg70, size: 22),
-                    tooltip: 'AI 智能导入',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AiImportsScreen()),
-                      );
-                    },
-                  )
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      icon: Icon(Icons.mic_rounded, color: fg70, size: 22),
+                      tooltip: '语音记账',
+                      onPressed: _openVoiceEntry,
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.file_upload_rounded,
+                          color: fg70, size: 22),
+                      tooltip: 'AI 智能导入',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AiImportsScreen()),
+                        );
+                      },
+                    ),
+                  ])
                 else if (!widget.bill!.isTransfer)
                   PopupMenuButton<String>(
                     icon: Icon(Icons.more_horiz_rounded,
@@ -1020,7 +1152,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     );
     if (ok != true) return;
     try {
-      await ApiService.convertBill(b.id, to: 'loan');
+      await _api.convertBill(b.id, to: 'loan');
       if (!mounted) return;
       bumpRefresh();
       Navigator.pop(context, true);
@@ -1062,7 +1194,7 @@ class _AddBillScreenState extends State<AddBillScreen>
 
   Future<void> _reloadCategories() async {
     try {
-      final res = await ApiService.getCategories();
+      final res = await _api.getCategories();
       if (!mounted) return;
       final cats = (res['categories'] as List? ?? [])
           .map((c) => Category.fromJson(c as Map<String, dynamic>))
@@ -1357,6 +1489,7 @@ class _AddBillScreenState extends State<AddBillScreen>
     }
 
     return GestureDetector(
+      key: Key('numkey-$k'), // 测试定位用（数字键盘无其它稳定语义标识）
       onTap: _saving && isDone
           ? null
           : () {
